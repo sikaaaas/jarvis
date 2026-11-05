@@ -1,0 +1,12 @@
+# Jarvis core needs NOTHING from pip - it is Python standard library only.
+# This file exists so you know that on purpose.
+#
+# OPTIONAL - the local ears only. Uncomment, then:  pip install -r requirements.txt
+# faster-whisper>=1.1.0        # Windows / Linux. Mac users: pip install mlx-whisper
+#
+# OPTIONAL - the tool armory (docs/arms.md). Every arm soft-fails without these;
+# you only install the ones you want.
+# mss>=9.0; pillow>=10.0      # eyes: screen capture + the 24/7 watcher
+# pyautogui>=0.9.54           # hands: type/click/scroll/point (then flip pc_control.enabled)
+# playwright>=1.49            # browser: after this also run  playwright install chromium
+# reportlab>=4.0              # scribe: render PDFs (markdown files work without it)

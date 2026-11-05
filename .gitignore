@@ -1,0 +1,34 @@
+# Your real keys live here - never commit it.
+config.json
+
+# Generated at first run
+viewer/graph-data.js
+wav-cache/
+logs/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+
+# Notes you capture by voice stay yours
+notes/captures/
+
+# Skills the butler forges are yours - drafts, armed skills and their data
+skills/*
+!skills/README.md
+
+# The journal and anything written to the desktop-output folder are yours
+memory/
+output/
+
+# The stage's live ring files - the butler writes these at runtime
+barehands/state/state
+barehands/state/mood.json
+barehands/state/wave.json
+barehands/__pycache__/
+
+# The publish helpers RUN the push - they are tools, not project files.
+# (They still ship in jarvis-upload.zip for fresh installs; they just don't
+# belong in the published repo.)
+push.bat
+push.sh

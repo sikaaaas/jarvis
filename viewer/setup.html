@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>J.A.R.V.I.S. — choose your agent</title>
+<style>
+  :root {
+    --hud: #cfd8e3; --dim: #7b8794; --accent: #6ee7ff; --warn: #ffb454;
+    --pane: rgba(4, 9, 14, .78); --line: rgba(110, 160, 200, .18);
+    --good: #7dffb0; --bad: #ff7a7a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { min-height: 100%; background: #000004; color: var(--hud);
+    font-family: Consolas, "Cascadia Mono", "SF Mono", Menlo, "DejaVu Sans Mono", monospace; }
+  body { background-image:
+    radial-gradient(ellipse at 50% 0%, rgba(110,231,255,.08), transparent 60%),
+    radial-gradient(ellipse at 50% 110%, rgba(60,90,140,.12), transparent 55%); }
+  main { max-width: 860px; margin: 0 auto; padding: 42px 20px 60px; }
+  h1 { font-size: 26px; letter-spacing: 8px; color: var(--accent); font-weight: 600;
+       text-shadow: 0 0 18px rgba(110,231,255,.45); }
+  h1 small { display: block; font-size: 11px; letter-spacing: 3px; color: var(--dim);
+             margin-top: 6px; text-shadow: none; }
+  .sub { margin: 18px 0 26px; font-size: 12.5px; line-height: 1.75; color: var(--hud); }
+  .sub b { color: var(--accent); }
+  #cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+  .card { border: 1px solid var(--line); background: var(--pane); border-radius: 6px;
+          padding: 13px 14px; cursor: pointer; transition: border-color .15s, box-shadow .15s; }
+  .card:hover { border-color: var(--accent); box-shadow: 0 0 14px rgba(110,231,255,.15); }
+  .card.sel { border-color: var(--accent); box-shadow: 0 0 18px rgba(110,231,255,.28); }
+  .card .nm { font-size: 14px; letter-spacing: 2px; color: #fff; }
+  .card .tags { margin-top: 7px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .tag { font-size: 9.5px; letter-spacing: 1px; padding: 2px 7px; border-radius: 3px;
+         border: 1px solid var(--line); color: var(--dim); }
+  .tag.cloud { color: var(--accent); border-color: rgba(110,231,255,.4); }
+  .tag.local { color: var(--good); border-color: rgba(125,255,176,.4); }
+  .tag.set { color: var(--good); }
+  .tag.nokey { color: var(--warn); border-color: rgba(255,180,84,.4); }
+  .tag.now { color: #000; background: var(--accent); border-color: var(--accent); }
+  .card .model { margin-top: 8px; font-size: 11px; color: var(--dim); }
+  .card .cost { margin-top: 8px; font-size: 10.5px; color: var(--dim); line-height: 1.5; }
+  .card .cost b { color: var(--hud); }
+  #detail { margin-top: 18px; border: 1px solid var(--accent); background: var(--pane);
+            border-radius: 6px; padding: 18px; box-shadow: 0 0 22px rgba(110,231,255,.12); }
+  #detail h2 { font-size: 13px; letter-spacing: 3px; color: var(--accent); margin-bottom: 14px; }
+  #detail label { display: block; font-size: 10.5px; letter-spacing: 2px; color: var(--dim); margin: 12px 0 5px; }
+  #detail input { width: 100%; background: rgba(0,0,0,.55); border: 1px solid var(--line);
+                  border-radius: 4px; color: var(--hud); font: inherit; font-size: 13px;
+                  padding: 9px 11px; outline: none; }
+  #detail input:focus { border-color: var(--accent); }
+  .btnrow { margin-top: 16px; display: flex; gap: 10px; flex-wrap: wrap; }
+  button { font: inherit; font-size: 11.5px; letter-spacing: 2px; padding: 9px 18px;
+           border-radius: 4px; border: 1px solid var(--accent); color: var(--accent);
+           background: transparent; cursor: pointer; transition: all .15s; }
+  button:hover { background: rgba(110,231,255,.12); }
+  button.primary { background: var(--accent); color: #001018; font-weight: 700; }
+  button.primary:hover { box-shadow: 0 0 16px rgba(110,231,255,.5); }
+  button:disabled { opacity: .4; cursor: wait; }
+  #dResult { margin-top: 13px; font-size: 12px; line-height: 1.6; min-height: 18px; }
+  #dResult.ok { color: var(--good); }
+  #dResult.bad { color: var(--bad); }
+  .foot { margin-top: 30px; font-size: 11.5px; line-height: 1.8; color: var(--dim); }
+  .foot a { color: var(--accent); text-decoration: none; border-bottom: 1px dotted rgba(110,231,255,.5); }
+  .foot table { border-collapse: collapse; margin-top: 10px; font-size: 11px; }
+  .foot td { border: 1px solid var(--line); padding: 5px 10px; color: var(--hud); }
+  .foot td:first-child { color: var(--dim); }
+  .err { margin-top: 14px; font-size: 12px; color: var(--bad); }
+</style>
+</head>
+<body>
+<main>
+  <h1>J.A.R.V.I.S.<small>FIRST BOOT &mdash; CHOOSE YOUR AGENT</small></h1>
+  <p class="sub">Pick the brain he thinks with and paste its key below &mdash; <b>no config files to edit</b>, the butler writes his own <b>config.json</b> when you save. The key travels once, straight to its own vendor, through the single logged door, and is never shown, logged or spoken again. Everything else on this page lives on your machine.</p>
+
+  <div id="cards"><div class="err">waking the shelf&hellip;</div></div>
+
+  <div id="detail" hidden>
+    <h2 id="dTitle"></h2>
+    <div id="dKeyWrap">
+      <label for="dKey">API KEY</label>
+      <input id="dKey" type="password" autocomplete="off" spellcheck="false" placeholder="paste the key from the vendor's dashboard">
+    </div>
+    <div id="dModelWrap">
+      <label for="dModel">MODEL</label>
+      <input id="dModel" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="btnrow">
+      <button id="dTest">TEST</button>
+      <button id="dSave" class="primary">SAVE &amp; ENTER THE GALAXY</button>
+    </div>
+    <div id="dResult"></div>
+  </div>
+
+  <div class="foot">
+    <a href="/">&raquo; Skip &mdash; enter with no key (he answers one dry line until a real agent is set)</a>
+    <table>
+      <tr><td>this setup screen</td><td><b>0 MB</b> &mdash; a local page, nothing to download</td></tr>
+      <tr><td>Jarvis himself</td><td><b>~4 MB</b> &mdash; already on your disk</td></tr>
+      <tr><td>cloud agents<br>(Claude / ChatGPT / Gemini / OpenRouter)</td><td><b>0 MB</b> &mdash; nothing to install, just the key</td></tr>
+      <tr><td>local brain (Ollama)</td><td><b>~0.6&ndash;1 GB</b> installer + <b>~5&ndash;6 GB</b> model &mdash; you install it from ollama.com, Jarvis never downloads it for you</td></tr>
+      <tr><td>the mic (browser ears)</td><td><b>0 MB</b> &mdash; works immediately in Chrome/Edge; audio goes to the browser maker's cloud (that is the trade)</td></tr>
+      <tr><td>the mic (offline Whisper ears)</td><td><b>~150 MB</b> package + <b>~0.5&ndash;1.6 GB</b> model weights, one time &mdash; that is the price of <b>no audio ever leaving the room</b> (the build pack's choice)</td></tr>
+      <tr><td>optional extras</td><td>VoiceStudio ~0.5&ndash;2 GB &middot; Ollama ~0.6&ndash;1 GB + models &mdash; all optional, all soft-fail</td></tr>
+    </table>
+
+    <h3 style="margin-top:26px;font-size:12px;letter-spacing:3px;color:var(--accent)">THE VOICE &mdash; HOW JARVIS STOPS SOUNDING LIKE A COMPUTER</h3>
+    <p style="margin-top:8px" id="voiceDiag">checking the local voice&hellip;</p>
+    <p style="margin-top:8px">The <b>real</b> Jarvis voice is a <b>cloned voice</b> from <b>VoiceStudio</b> (Install 02 of the build pack). Until it is installed and open, he speaks in tiers: <b>cloud tier first</b> &mdash; Gemini's deep <b>Charon</b> voice or OpenAI's <b>onyx</b>, borrowed with an agent key you pasted above, 0&nbsp;MB, no install &mdash; then the browser's stand-in voice (pick a better one any time from the <b>VO</b> menu under the dial). Four steps to the real clone, one time:</p>
+    <table>
+      <tr><td>1 &middot; install</td><td>PowerShell: <b>irm https://voicestudio.sh/install.ps1 | iex</b> &mdash; then open the app</td></tr>
+      <tr><td>2 &middot; runtime</td><td>first run: click <b>Install local runtime</b> and wait &mdash; it downloads a few gigabytes once</td></tr>
+      <tr><td>3 &middot; engine</td><td>Model Catalogue &rarr; install and select <b>VoxCPM2</b> (Windows, NVIDIA) &middot; Mac: <b>CSM 1B</b> on the MLX audio engine</td></tr>
+      <tr><td>4 &middot; clone</td><td><b>Profiles &rarr; New &rarr; Clone</b> &mdash; a 10&ndash;20 second clean clip, one speaker, no music &mdash; name it exactly <b>Jarvis</b></td></tr>
+    </table>
+    <p style="margin-top:8px">Keep the app open while Jarvis runs; he finds it on port 3900 by himself, pins the engine, and caches every line. Close it and he quietly falls back to the browser voice &mdash; nothing breaks.</p>
+  </div>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let SHELF = [], SEL = null;
+
+async function load() {
+  try {
+    const res = await fetch("/brains");
+    const data = await res.json();
+    SHELF = data.brains || [];
+    if (data.setup_needed === false) {
+      $("cards").innerHTML = '<div class="err" style="color:var(--good)">an agent is already set &mdash; you can change him here any time.</div>';
+    }
+    render();
+  } catch (e) {
+    $("cards").innerHTML = '<div class="err">the server did not answer - is main.py running?</div>';
+  }
+}
+
+function cost(b) {
+  if (b.where === "local") return '<b>0 MB now</b> - but Ollama (~0.6-1 GB + a 5-6 GB model) must already be running on this machine.';
+  return '<b>0 MB</b> - nothing to install, just paste the key.';
+}
+
+function render() {
+  $("cards").innerHTML = SHELF.map((b, i) => {
+    const tags = [
+      '<span class="tag ' + b.where + '">' + b.where.toUpperCase() + "</span>",
+      b.key_set ? '<span class="tag set">KEY SET</span>' : '<span class="tag nokey">NO KEY</span>',
+      b.current ? '<span class="tag now">ACTIVE</span>' : ""
+    ].join("");
+    return '<div class="card' + (SEL === i ? " sel" : "") + '" data-i="' + i + '">' +
+      '<div class="nm">' + b.name.toUpperCase() + "</div>" +
+      '<div class="tags">' + tags + "</div>" +
+      '<div class="model">' + (b.model || "?") + "</div>" +
+      '<div class="cost">' + cost(b) + "</div></div>";
+  }).join("") || '<div class="err">the shelf is empty - check config.template.json</div>';
+  document.querySelectorAll(".card").forEach(c => c.onclick = () => pick(+c.dataset.i));
+}
+
+function pick(i) {
+  SEL = i;
+  render();
+  const b = SHELF[i];
+  $("detail").hidden = false;
+  $("dTitle").textContent = "AGENT: " + b.name.toUpperCase();
+  $("dKey").value = "";
+  $("dModel").value = b.model || "";
+  $("dResult").className = "";
+  $("dResult").textContent = "";
+  $("dKeyWrap").style.display = b.where === "local" ? "none" : "block";
+  if (b.where === "local") $("dResult").textContent = "Local brain: no key needed. Test checks Ollama is answering; Save makes him boot on it.";
+  $("detail").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+async function post(url, body) {
+  const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
+                                 body: JSON.stringify(body) });
+  return res.json();
+}
+
+$("dTest").onclick = async () => {
+  if (SEL === null) return;
+  const b = SHELF[SEL], r = $("dResult");
+  $("dTest").disabled = true;
+  r.className = ""; r.textContent = "knocking on " + b.name + "'s door\u2026";
+  try {
+    const res = await post("/setup/test", { brain: b.name, api_key: $("dKey").value });
+    r.className = res.ok ? "ok" : "bad";
+    r.textContent = res.ok ? "\u2713 " + (res.detail || "the key works") : (res.error || res.detail || "it refused");
+  } catch (e) { r.className = "bad"; r.textContent = "the server did not answer - is main.py running?"; }
+  $("dTest").disabled = false;
+};
+
+$("dSave").onclick = async () => {
+  if (SEL === null) return;
+  const b = SHELF[SEL], r = $("dResult");
+  if (b.where !== "local" && !$("dKey").value.trim() && !b.key_set) {
+    r.className = "bad"; r.textContent = "paste the key first - or pick the local brain, which needs none.";
+    return;
+  }
+  $("dSave").disabled = true;
+  try {
+    const res = await post("/setup", { brain: b.name, api_key: $("dKey").value, model: $("dModel").value });
+    if (res.ok) {
+      r.className = "ok";
+      r.textContent = "\u2713 Saved. " + b.name + " is your agent now" + (res.key_set ? ", key aboard." : "") + " Entering the galaxy\u2026";
+      setTimeout(() => { location.href = "/"; }, 900);
+    } else {
+      r.className = "bad"; r.textContent = res.error || "he refused that.";
+    }
+  } catch (e) { r.className = "bad"; r.textContent = "the server did not answer - is main.py running?"; }
+  $("dSave").disabled = false;
+};
+
+load();
+
+/* the voice diagnostic: WHY the cloned voice is or is not home, from the server */
+(async () => {
+  const el = $("voiceDiag");
+  try {
+    const res = await fetch("/health");
+    const h = await res.json();
+    const vd = h.voice_detail || {};
+    if (h.voice === "local") { el.textContent = "\u2713 The cloned voice is live \u2014 answers are spoken in the 'Jarvis' profile."; el.style.color = "var(--good)"; }
+    else { el.textContent = "\u25CB " + (vd.detail || "the local voice is not answering \u2014 the browser voice stands in."); el.style.color = "var(--warn)"; }
+  } catch (e) { el.textContent = "the server did not answer \u2014 is main.py running?"; el.style.color = "var(--bad)"; }
+})();
+</script>
+</body>
+</html>

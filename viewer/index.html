@@ -1,0 +1,1399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis</title>
+<style>
+  :root {
+    --hud: #cfd8e3; --dim: #7b8794; --accent: #6ee7ff; --warn: #ffb454;
+    --pane: rgba(4, 9, 14, .78); --line: rgba(110, 160, 200, .18);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; background: #000004; color: var(--hud);
+    font-family: Consolas, "Cascadia Mono", "SF Mono", Menlo, "DejaVu Sans Mono", monospace; }
+  #stage { position: fixed; inset: 0; }
+
+  /* atmosphere: vignette + faint scanlines, purely cosmetic, never clickable */
+  #vignette { position: fixed; inset: 0; z-index: 2; pointer-events: none;
+    background: radial-gradient(ellipse at 50% 42%, transparent 55%, rgba(0,0,2,.55) 100%); }
+  #scan { position: fixed; inset: 0; z-index: 2; pointer-events: none; opacity: .05;
+    background: repeating-linear-gradient(0deg, transparent 0 2px, #9fc9ff 2px 3px); }
+  #sweep { position: fixed; left: 0; right: 0; height: 120px; z-index: 2; pointer-events: none;
+    background: linear-gradient(180deg, transparent, rgba(110,231,255,.05), transparent);
+    animation: sweepmove 9s linear infinite; }
+  @keyframes sweepmove { 0% { top: -140px; } 100% { top: 100vh; } }
+
+  /* state-reactive hue: the whole HUD changes colour with what Jarvis is doing */
+  body[data-state="listen"] { --accent: #7dffb0; }
+  body[data-state="think"]  { --accent: #b39bff; }
+  body[data-state="speak"]  { --accent: #ffd76a; }
+  #chatbar { transition: border-color .5s, box-shadow .5s; }
+  body[data-state="listen"] #chatbar { border-color: rgba(125,255,176,.5);
+    animation: breathe 2.4s ease-in-out infinite; }
+  body[data-state="speak"] #chatbar { border-color: rgba(255,215,106,.5);
+    box-shadow: 0 0 22px rgba(255,215,106,.12); }
+  @keyframes breathe { 0%,100% { box-shadow: 0 0 10px rgba(125,255,176,.10); }
+                       50%     { box-shadow: 0 0 26px rgba(125,255,176,.22); } }
+  body[data-state="listen"] #dialArc { stroke: rgba(125,255,176,.6); }
+  body[data-state="think"] #dialArc { stroke: rgba(179,155,255,.6); }
+  body[data-state="speak"] #dialArc { stroke: rgba(255,215,106,.65); }
+  body[data-state="listen"] #stateWord, body[data-state="listen"] .dotp { color: #7dffb0; }
+  body[data-state="think"] #stateWord { color: #b39bff; }
+  body[data-state="speak"] #stateWord { color: #ffd76a; }
+
+  /* the boot: a ring spins the name in, then the HUD is alive */
+  #bootSplash { position: fixed; inset: 0; z-index: 90; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 20px; background: #000004;
+    transition: opacity .7s ease; pointer-events: none; }
+  #bootSplash.gone { opacity: 0; }
+  #bootSplash .ring { width: 110px; height: 110px; border-radius: 50%;
+    border: 1.5px solid rgba(110,231,255,.85); border-top-color: transparent;
+    animation: bootspin 1.1s linear infinite;
+    box-shadow: 0 0 30px rgba(110,231,255,.35), inset 0 0 22px rgba(110,231,255,.2); }
+  #bootSplash .word { font-size: 15px; letter-spacing: 10px; color: var(--accent);
+    text-shadow: 0 0 16px rgba(110,231,255,.6); animation: bootspace 1.6s ease infinite; }
+  @keyframes bootspin { to { transform: rotate(360deg); } }
+  @keyframes bootspace { 0%,100% { letter-spacing: 8px; opacity: .8; } 50% { letter-spacing: 13px; opacity: 1; } }
+
+  .hud { position: fixed; top: 14px; left: 16px; z-index: 10; pointer-events: none; }
+  #status { font-size: 12px; letter-spacing: .4px; color: var(--hud); text-shadow: 0 0 8px #000; }
+  #status b { color: var(--accent); font-weight: 600; }
+  #notecount { font-size: 11px; color: var(--dim); margin-top: 3px; }
+  #badge { position: fixed; top: 14px; right: 16px; z-index: 30; font-size: 11px; letter-spacing: .5px;
+    color: #06121a; background: var(--accent); padding: 5px 10px; border-radius: 3px; opacity: 0;
+    transition: opacity .25s; pointer-events: none; white-space: nowrap; }
+  #badge.show { opacity: .95; animation: badgein .3s ease; }
+  @keyframes badgein { from { transform: translateY(-8px); opacity: 0; } }
+  #badge.warn { background: var(--warn); }
+
+  /* ==================== left sidebar: search / hubs / forces ==================== */
+  #sidebar { position: fixed; top: 52px; left: 14px; width: 236px; z-index: 10;
+    background: var(--pane); border: 1px solid var(--line); border-radius: 6px;
+    padding: 12px 12px 10px; max-height: calc(100vh - 170px); overflow-y: auto;
+    backdrop-filter: blur(5px); }
+  #sidebar::-webkit-scrollbar { width: 4px; }
+  #sidebar::-webkit-scrollbar-thumb { background: #1d2b3a; border-radius: 2px; }
+  .sTitle { font-size: 10px; letter-spacing: 2px; color: var(--dim); margin: 12px 0 6px; }
+  .sTitle:first-child { margin-top: 0; }
+  #searchBox { width: 100%; background: rgba(10, 18, 26, .8); border: 1px solid var(--line);
+    color: var(--hud); font: 12px Consolas, Menlo, monospace; padding: 7px 9px; border-radius: 4px;
+    outline: none; }
+  #searchBox:focus { border-color: rgba(110, 231, 255, .45); }
+  #searchResults { margin-top: 4px; }
+  #searchResults .res { display: flex; align-items: center; gap: 7px; padding: 4px 4px;
+    font-size: 11px; cursor: pointer; border-radius: 3px; white-space: nowrap; overflow: hidden; }
+  #searchResults .res:hover { background: rgba(110, 231, 255, .08); color: #fff; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .sNote { font-size: 10px; line-height: 1.65; color: var(--dim); }
+  #hubs .hub { display: flex; align-items: center; gap: 7px; padding: 3px 4px; font-size: 11px;
+    cursor: pointer; border-radius: 3px; white-space: nowrap; overflow: hidden; }
+  #hubs .hub:hover { background: rgba(110, 231, 255, .08); color: #fff; }
+  #hubs .hub .n { margin-left: auto; color: var(--dim); font-size: 10px; }
+  .frow { display: flex; align-items: center; gap: 8px; font-size: 10px; color: var(--dim); margin: 6px 0; }
+  .frow span.lbl { width: 58px; flex: none; letter-spacing: 1px; }
+  .frow input[type=range] { flex: 1; -webkit-appearance: none; appearance: none; height: 2px;
+    background: #1d2b3a; border-radius: 1px; outline: none; }
+  .frow input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none;
+    width: 10px; height: 10px; border-radius: 50%; background: var(--accent); cursor: pointer; }
+  .frow .val { width: 26px; text-align: right; color: var(--hud); }
+
+  /* ==================== right column: legend / dial / toggles ==================== */
+  #rightcol { position: fixed; top: 52px; right: 14px; width: 178px; z-index: 10;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 12px; pointer-events: none; }
+  #legend { background: var(--pane); border: 1px solid var(--line); border-radius: 6px;
+    padding: 10px 12px; pointer-events: auto; backdrop-filter: blur(5px); min-width: 150px; }
+  #legend .lg { display: flex; align-items: center; gap: 7px; font-size: 10.5px; padding: 2px 0;
+    cursor: pointer; white-space: nowrap; }
+  #legend .lg:hover { color: #fff; }
+  #legend .lg .n { margin-left: auto; color: var(--dim); }
+  #dialWrap { background: var(--pane); border: 1px solid var(--line); border-radius: 6px;
+    padding: 12px 12px 10px; pointer-events: auto; backdrop-filter: blur(5px);
+    display: flex; flex-direction: column; align-items: center; }
+  #dial { position: relative; width: 118px; height: 118px; }
+  #dial svg { position: absolute; inset: 0; }
+  #dialTicks { transform-origin: 60px 60px; animation: spin 40s linear infinite; }
+  #dial.active #dialTicks { animation-duration: 9s; }
+  #dial.speaking #dialTicks { animation-duration: 4s; }
+  #dialArc2 { transform-origin: 60px 60px; animation: spinrev 7s linear infinite; }
+  #dial.active #dialArc2 { animation-duration: 3s; }
+  @keyframes spinrev { to { transform: rotate(-360deg); } }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #dialName { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 11px; letter-spacing: 2px; color: var(--hud); text-shadow: 0 0 10px rgba(110,231,255,.5); }
+  #stateRow { margin-top: 9px; font-size: 11px; letter-spacing: 2px; color: var(--accent); }
+  #stateRow .dotp { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--accent); margin-right: 7px; vertical-align: 1px; animation: pulse 2s ease infinite; }
+  #dial.speaking ~ #stateRow .dotp, #stateRow.speaking .dotp { animation-duration: .7s; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+  #meters { margin-top: 7px; font-size: 9.5px; letter-spacing: 1px; color: var(--dim);
+    display: flex; gap: 12px; }
+  #meters b { color: var(--hud); font-weight: 600; }
+  #toggles { margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; width: 100%; }
+  .tgl { font: 9.5px Consolas, Menlo, monospace; letter-spacing: 1.5px; color: var(--dim);
+    background: rgba(10, 18, 26, .8); border: 1px solid var(--line); border-radius: 3px;
+    padding: 5px 0; cursor: pointer; transition: all .15s; }
+  .tgl:hover { color: var(--hud); border-color: rgba(110,231,255,.4); }
+  .tgl.on { color: var(--accent); border-color: rgba(110,231,255,.45);
+    box-shadow: 0 0 8px rgba(110,231,255,.15) inset; }
+
+  /* ==================== note panel (side panel with the excerpt) ==================== */
+  #panel { position: fixed; top: 0; right: 0; width: 360px; max-width: 85vw; height: 100%; z-index: 40;
+    background: rgba(4, 9, 14, .94); border-left: 1px solid var(--line); padding: 26px 22px;
+    transform: translateX(105%); transition: transform .35s cubic-bezier(.2,.8,.2,1); overflow-y: auto; }
+  #panel.open { transform: translateX(0); }
+  #panel h2 { font-size: 18px; font-weight: 600; color: #fff; margin-bottom: 6px; }
+  #panel .group { display: inline-block; font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--accent); border: 1px solid rgba(110,231,255,.3); border-radius: 3px; padding: 2px 8px; }
+  #panel .excerpt { margin-top: 14px; font-size: 13px; line-height: 1.75; color: #b8c4d0; white-space: pre-wrap; }
+  #panel .file { margin-top: 16px; font-size: 10px; color: var(--dim); word-break: break-all; }
+  #panel .close { position: absolute; top: 10px; right: 12px; background: none; border: none;
+    color: var(--dim); font-size: 22px; cursor: pointer; }
+  #panel .close:hover { color: #fff; }
+
+  /* ==================== armory panel: the butler's hands ==================== */
+  #armory { position: fixed; top: 0; left: 0; width: 390px; max-width: 92vw; height: 100%; z-index: 45;
+    background: rgba(4, 9, 14, .95); border-right: 1px solid var(--line); padding: 26px 20px 30px;
+    transform: translateX(-105%); transition: transform .35s cubic-bezier(.2,.8,.2,1); overflow-y: auto;
+    backdrop-filter: blur(6px); }
+  #armory.open { transform: translateX(0); }
+  #armory h2 { font-size: 15px; font-weight: 600; color: #fff; letter-spacing: 2px; }
+  #armory .close { position: absolute; top: 10px; right: 12px; background: none; border: none;
+    color: var(--dim); font-size: 22px; cursor: pointer; }
+  #armory .close:hover { color: #fff; }
+  #armSearch { width: 100%; margin-top: 12px; background: rgba(10, 18, 26, .8); border: 1px solid var(--line);
+    color: var(--hud); font: 12px Consolas, Menlo, monospace; padding: 7px 9px; border-radius: 4px; outline: none; }
+  #armSearch:focus { border-color: rgba(110, 231, 255, .45); }
+  .armRow { margin-top: 10px; border: 1px solid var(--line); border-radius: 5px; padding: 9px 11px;
+    background: rgba(10, 18, 26, .55); }
+  .armRow .top { display: flex; align-items: center; gap: 8px; }
+  .armRow .nm { font-size: 12px; color: var(--accent); letter-spacing: .5px; }
+  .armRow .pill { margin-left: auto; font-size: 9px; letter-spacing: 1px; padding: 2px 7px;
+    border-radius: 3px; border: 1px solid rgba(123,135,148,.4); color: var(--dim); }
+  .pill.ready { color: #7dffc8; border-color: rgba(125,255,200,.4); }
+  .pill.off { color: var(--warn); border-color: rgba(255,180,84,.45); }
+  .armRow .ds { font-size: 10.5px; color: #93a3b3; margin-top: 5px; line-height: 1.5; }
+  .armRow .how { font-size: 9.5px; color: var(--dim); margin-top: 4px; }
+  .armRow .act { margin-top: 7px; font: 9.5px Consolas, Menlo, monospace; letter-spacing: 1px;
+    color: var(--accent); background: none; border: 1px solid rgba(110,231,255,.35); border-radius: 3px;
+    padding: 4px 10px; cursor: pointer; }
+  .armRow .act:hover { background: rgba(110,231,255,.1); }
+  .armRow .act.danger { color: #ff9db2; border-color: rgba(255,85,119,.4); }
+  #armSkills h3 { margin: 18px 0 4px; font-size: 10px; letter-spacing: 2px; color: var(--dim); }
+  .skRow { display: flex; align-items: center; gap: 8px; font-size: 11px; padding: 5px 2px;
+    border-bottom: 1px solid rgba(110,160,200,.08); }
+  .skRow .nm { color: var(--hud); flex: none; }
+  .skRow .ds { color: var(--dim); font-size: 10px; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; flex: 1; }
+  .skRow button { font: 9px Consolas, Menlo, monospace; letter-spacing: 1px; padding: 3px 8px;
+    border-radius: 3px; cursor: pointer; background: none; }
+  .skRow .ok { color: #7dffc8; border: 1px solid rgba(125,255,200,.4); }
+  .skRow .no { color: #ff9db2; border: 1px solid rgba(255,85,119,.4); }
+  .skRow .ok:hover, .skRow .no:hover { background: rgba(110,231,255,.08); }
+
+  /* ==================== answer + command bar ==================== */
+  #answer { display: none; position: fixed; left: 50%; bottom: 118px; transform: translateX(-50%);
+    z-index: 25; max-width: min(720px, 80vw); background: rgba(4, 9, 14, .92);
+    border: 1px solid rgba(110, 231, 255, .3); border-radius: 6px; padding: 12px 18px;
+    font-size: 13px; line-height: 1.65; color: #e6eef5; box-shadow: 0 4px 30px rgba(0,0,0,.6); }
+  #answer { animation: answerglow .45s ease; }
+  @keyframes answerglow { 0% { opacity: 0; box-shadow: 0 0 0 rgba(110,231,255,0); }
+                          100% { opacity: 1; box-shadow: 0 4px 34px rgba(110,231,255,.14); } }
+  #chatbar { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%); z-index: 25;
+    display: flex; align-items: center; gap: 9px; background: var(--pane);
+    border: 1px solid var(--line); border-radius: 999px; padding: 7px 10px 7px 18px;
+    width: min(660px, calc(100vw - 40px)); backdrop-filter: blur(6px); }
+  #input { flex: 1; background: none; border: none; outline: none; color: var(--hud);
+    font: 13px Consolas, Menlo, monospace; }
+  #input::placeholder { color: #55636f; }
+  .rbtn { width: 38px; height: 38px; border-radius: 50%; flex: none; cursor: pointer;
+    background: rgba(10, 18, 26, .9); border: 1px solid var(--line); color: var(--hud);
+    font-size: 15px; line-height: 1; transition: all .15s; }
+  .rbtn:hover { border-color: rgba(110,231,255,.5); color: var(--accent); }
+  .rbtn.rec { background: #4a1020; border-color: #ff5577; color: #ff9db2;
+    box-shadow: 0 0 12px rgba(255, 85, 119, .5); }
+  .rbtn.active { color: var(--accent); border-color: rgba(110,231,255,.55);
+    box-shadow: 0 0 10px rgba(110,231,255,.25); }
+  #wakeBtn { width: auto; padding: 0 14px; border-radius: 999px; font: 10px Consolas, Menlo, monospace;
+    letter-spacing: 1px; height: 38px; }
+  #hint { position: fixed; left: 50%; bottom: 40px; transform: translateX(-50%); z-index: 24;
+    font-size: 10px; letter-spacing: .5px; color: #55636f; white-space: nowrap; }
+  #brainErr { display: none; position: fixed; left: 50%; bottom: 176px; transform: translateX(-50%);
+    z-index: 26; max-width: min(720px, 84vw); background: rgba(60, 12, 18, .92);
+    border: 1px solid rgba(255, 95, 109, .45); border-radius: 6px; padding: 10px 16px;
+    font: 11.5px Consolas, Menlo, monospace; line-height: 1.6; color: #ffd7db;
+    box-shadow: 0 4px 30px rgba(0,0,0,.6); }
+  #brainErr.show { display: block; }
+  #brainErr a { color: #ff9db2; font-weight: 700; margin-left: 10px; white-space: nowrap; }
+  #voiceRow { display: flex; align-items: center; gap: 7px; margin-top: 9px; justify-content: center; }
+  #voiceRow .vlbl { font: 9px Consolas, Menlo, monospace; letter-spacing: 1px; color: var(--dim); }
+  #voiceSel { max-width: 150px; background: rgba(10, 18, 26, .9); border: 1px solid var(--line);
+    color: var(--hud); font: 10px Consolas, Menlo, monospace; padding: 3px 5px; border-radius: 4px;
+    outline: none; }
+  #voiceSel:focus { border-color: rgba(110, 231, 255, .45); }
+
+  /* cinema mode: HOLO off hides the side consoles, the conversation stays */
+  body.holo-off #sidebar, body.holo-off #rightcol, body.holo-off #hint { display: none; }
+
+  @media (max-width: 900px) {
+    #sidebar, #rightcol { display: none; }
+    #chatbar { bottom: 54px; }
+    #hint { bottom: 30px; }
+  }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="vignette"></div>
+<div id="scan"></div>
+<div id="sweep"></div>
+<div id="bootSplash"><div class="ring"></div><div class="word">J.A.R.V.I.S.</div></div>
+
+<div class="hud">
+  <div id="status"> Jarvis is waking up&hellip;</div>
+  <div id="notecount"></div>
+</div>
+<div id="badge"></div>
+
+<!-- left console: search the brain, instruction, top hubs, forces -->
+<aside id="sidebar">
+  <div class="sTitle">SEARCH THE BRAIN</div>
+  <input id="searchBox" autocomplete="off" placeholder="search notes&hellip;">
+  <div id="searchResults"></div>
+
+  <div class="sTitle">INSTRUCTION</div>
+  <div class="sNote">Click a node to open its note and focus the galaxy. Ask a question and Jarvis flies to the note he answered from. Right-click a node to draft a memory from it. Hold and drag to move nodes. Press Escape to reset the view.</div>
+
+  <div class="sTitle">TOP HUBS</div>
+  <div id="hubs"></div>
+
+  <div class="sTitle">FORCES</div>
+  <div class="frow"><span class="lbl">REPEL</span><input type="range" id="fRepel" min="20" max="300" value="90"><span class="val" id="vRepel">90</span></div>
+  <div class="frow"><span class="lbl">LINK LEN</span><input type="range" id="fLink" min="10" max="220" value="30"><span class="val" id="vLink">30</span></div>
+</aside>
+
+<!-- right console: group legend, the dial, state, meters, toggles -->
+<div id="rightcol">
+  <div id="legend"></div>
+  <div id="dialWrap">
+    <div id="dial">
+      <svg viewBox="0 0 120 120">
+        <g id="dialTicks"></g>
+        <circle cx="60" cy="60" r="44" fill="none" stroke="rgba(110,231,255,.25)" stroke-width="1"/>
+        <circle id="dialArc" cx="60" cy="60" r="52" fill="none" stroke="rgba(110,231,255,.55)"
+          stroke-width="1.5" stroke-dasharray="70 257" stroke-linecap="round"/>
+        <circle id="dialArc2" cx="60" cy="60" r="48" fill="none" stroke="rgba(110,231,255,.28)"
+          stroke-width="1" stroke-dasharray="18 60" stroke-linecap="round"/>
+      </svg>
+      <div id="dialName">J.A.R.V.I.S.</div>
+    </div>
+    <div id="stateRow"><span class="dotp"></span><span id="stateWord">STANDBY</span></div>
+    <div id="meters"><span>MEM <b id="memVal">0</b></span><span>LINKS <b id="linkVal">0</b></span></div>
+    <div id="toggles">
+      <button class="tgl on" id="tglEyes" title="show or hide node labels">EYES</button>
+      <button class="tgl on" id="tglHolo" title="show or hide the consoles (cinema mode)">HOLO</button>
+      <button class="tgl on" id="tglFocus" title="slow idle rotation">FOCUS</button>
+      <button class="tgl" id="tglReflect" title="reset view and lighting">REFLECT</button>
+      <button class="tgl" id="tglArms" title="the tool armory: eyes, hands, browser, skills">ARMS</button>
+      <button class="tgl" id="tglHolocam" title="the holocam: barehands - move cards with your hands on camera">HOLOCAM</button>
+      <button class="tgl" id="tglAgent" title="choose your agent and paste its key - the first-boot screen">AGENT</button>
+    </div>
+    <div id="voiceRow"><span class="vlbl">VO</span>
+      <select id="voiceSel" title="The browser stand-in voice. The real Jarvis voice lives in VoiceStudio: install it, clone a profile named exactly 'Jarvis', keep the app open - see the AGENT screen."><option value="auto">auto</option></select>
+    </div>
+  </div>
+</div>
+
+<!-- the note a node (or an answer) opened -->
+<aside id="panel">
+  <button class="close" id="panelClose">&times;</button>
+  <h2 id="panelTitle"></h2>
+  <span class="group" id="panelGroup"></span>
+  <div class="excerpt" id="panelExcerpt"></div>
+  <div class="file" id="panelFile"></div>
+</aside>
+
+<aside id="armory">
+  <button class="close" id="armClose">&times;</button>
+  <h2>TOOL ARMORY</h2>
+  <input id="armSearch" autocomplete="off" placeholder="filter arms&hellip;">
+  <div id="armList"></div>
+  <div id="armSkills">
+    <h3>FORGED &mdash; AWAITING YOUR APPROVAL</h3>
+    <div id="pendingList"></div>
+    <h3>ARMED SKILLS</h3>
+    <div id="armedList"></div>
+  </div>
+</aside>
+
+<div id="answer"></div>
+
+<!-- the brain's honest complaint, when a cloud brain refuses us -->
+<div id="brainErr"><span id="brainErrText"></span><a href="/setup.html">OPEN SETUP</a></div>
+
+<div id="chatbar">
+  <input id="input" autocomplete="off" placeholder='Ask, "remember that&hellip;", "good morning", "switch to your local brain"&hellip;'>
+  <button class="rbtn" id="micBtn" title="Push to talk (hold, or hold Space)">&#127908;</button>
+  <button class="rbtn" id="wakeBtn" title="Hands-free wake word: say &quot;Jarvis&hellip;&quot;">WAKE</button>
+</div>
+<div id="hint">Enter to ask &middot; hold &#127908; or Space to talk &middot; WAKE for hands-free &middot; say &quot;stop&quot; or &quot;wait&quot; to hush me &middot; ?mute=1 silences this tab</div>
+
+<script src="vendor/three.min.js"></script>
+<script src="vendor/3d-force-graph.min.js"></script>
+<script>
+"use strict";
+/* ============================================================================
+   THE LAWS (from the build pack, all enforced in this file):
+   - ?mute=1: nothing in this tab ever speaks. The gate lives inside speak(),
+     THE ONE function that plays audio, so nothing can route around it.
+   - Chunking law: answers are split into sentence-packed chunks, never breaking
+     inside a sentence. Chunk n+1 is fetched while n plays, so playback never gaps.
+   - Finish window: speech recognition finalizes when you pause, and you pause
+     mid-sentence. Transcripts are buffered for FINISH_MS; more speech appends
+     and restarts the timer.
+   - The ears never send audio to a cloud while Whisper is installed; browser
+     recognition is a fallback only, and it says so on the badge.
+   - Only the answer path moves the camera (focusNode / lightCluster).
+   - The boot greeting fires after the first interaction; the note count on
+     screen is read from the graph data, never hardcoded.
+   ============================================================================ */
+
+/* ---- named constants ---- */
+const SILENCE_MS = 700;        // how much quiet ends an utterance (how you pause)
+const FINISH_MS = 900;         // how long we wait for more speech before dispatching (how you think)
+const MIN_UTTERANCE_MS = 300;  // ignore anything shorter
+const CHUNK_CHARS = 170;       // sentence-packed chunk target (the LOCAL voice path)
+const BROWSER_CHUNK = 450;     // browser voices re-connect per utterance - keep pieces big
+const HUB_DEG = 4;             // nodes with at least this many links wear a floating label
+const MUTE = new URLSearchParams(location.search).get("mute") === "1";
+const WAKE_WORDS = /^(?:hey\s+)?jarvis[\s,.!:]*/i;
+
+/* ---- dom ---- */
+const $ = (id) => document.getElementById(id);
+const statusEl = $("status"), badgeEl = $("badge"), notecountEl = $("notecount");
+const panel = $("panel"), input = $("input");
+const answerEl = $("answer");
+
+/* ---- state ---- */
+let graph = { nodes: [], links: [] };
+let voices = [];
+let audioCtx = null, micStream = null, micReady = false;
+let wakeOn = false, awaitingCommand = false, listening = false;
+let speaking = false, speakingGate = false;
+let noiseFloor = 0.006, currentAudio = null, chunkAbort = null;
+let lastBrain = null, lastVoice = null;
+let recognition = null;          // browser STT fallback
+let earMode = "none";            // "server" (Whisper) | "browser" | "none"
+let browserEarsOn = false;
+let browserSpeakToken = 0;
+let utteranceBuffer = "", finishTimer = null;
+let idleTimer = null;
+let labelsOn = true, focusRotate = true, hoverNode = null;
+let STARFIELD = null, NEBULAE = [], CORE_SPRITE = null;
+
+/* =========================== status + badge + dial =========================== */
+function setStatus(html) { statusEl.innerHTML = html; }
+function setBusy(kind, detail) {
+  const map = {
+    idle:    "Jarvis is standing by.",
+    listen:  "listening&hellip;",
+    heard:   "heard: <b>" + (detail || "") + "</b>",
+    transcribe: "hearing you&hellip;",
+    think:   "thinking&hellip;",
+    speak:   "speaking&hellip; <i>(say &ldquo;stop&rdquo; or &ldquo;wait&rdquo;)</i>"
+  };
+  setStatus(map[kind] || kind);
+  document.body.dataset.state = (kind === "listen" || kind === "transcribe") ? "listen"
+    : kind === "think" ? "think" : kind === "speak" ? "speak" : "idle";
+  dialState(kind);
+}
+/* the right-hand readout: STANDBY / LISTENING / THINKING / SPEAKING */
+/* the holocam ring mirror: whatever the HUD shows, the barehands ring shows */
+let holocamUp = false;
+function mirrorRing(kind) {
+  const ring = ({ listen: "listening", transcribe: "listening",
+                  think: "thinking", speak: "speaking" })[kind] || "idle";
+  fetch("/arms/ring", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ state: ring }) }).catch(() => {});   // fails silent when the holocam is dark
+}
+function dialState(kind) {
+  mirrorRing(kind);
+  const dial = $("dial"), word = $("stateWord"), row = $("stateRow");
+  dial.classList.remove("active", "speaking");
+  row.classList.remove("speaking");
+  if (kind === "listen" || kind === "transcribe") { dial.classList.add("active"); word.textContent = "LISTENING"; }
+  else if (kind === "think")  { dial.classList.add("active"); word.textContent = "THINKING"; }
+  else if (kind === "speak")  { dial.classList.add("active", "speaking"); row.classList.add("speaking"); word.textContent = "SPEAKING"; }
+  else word.textContent = "STANDBY";
+}
+function showBadge(text, warn) {
+  badgeEl.textContent = text;
+  badgeEl.className = "show" + (warn ? " warn" : "");
+  clearTimeout(badgeEl._t);
+  badgeEl._t = setTimeout(() => { badgeEl.className = ""; }, 5000);   // visible 5 s
+}
+
+/* =========================== the galaxy =========================== */
+/* A fixed, vivid palette for the shelves and folders Jarvis may touch - the
+   hash fallback keeps any future group colourful too. */
+const PALETTE = {
+  core: "#ffd76a", dir: "#8fb8ff", notes: "#6ee7ff", captures: "#ff8f5e",
+  docs: "#93c5fd", skills: "#e879f9", output: "#6ee7b7", memory: "#c4b5fd",
+  journal: "#c4b5fd", finance: "#7dffb0", ops: "#ffd76a", suppliers: "#ff9de2",
+  marketing: "#ffa94d", people: "#a78bfa", product: "#4ade80",
+  customers: "#38bdf8", menu: "#f472b6"
+};
+function groupColor(g) {
+  if (PALETTE[g]) return new THREE.Color(PALETTE[g]);
+  let h = 0; for (const c of (g || "notes")) h = (h * 31 + c.charCodeAt(0)) % 360;
+  return new THREE.Color("hsl(" + h + ", 80%, 62%)");
+}
+function glowTexture() {
+  const c = document.createElement("canvas"); c.width = c.height = 128;
+  const g = c.getContext("2d").createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, "rgba(255,255,255,1)"); g.addColorStop(0.25, "rgba(255,255,255,.6)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  const ctx = c.getContext("2d"); ctx.fillStyle = g; ctx.fillRect(0, 0, 128, 128);
+  return new THREE.CanvasTexture(c);
+}
+const GLOW = glowTexture();
+
+/* floating labels for hubs and lit nodes - texture cached per label string */
+const labelCache = new Map();
+function labelSprite(text) {
+  if (labelCache.has(text)) return labelCache.get(text).clone();
+  const c = document.createElement("canvas");
+  let ctx = c.getContext("2d");
+  const font = "600 44px Consolas, Menlo, monospace";
+  ctx.font = font;
+  const w = Math.ceil(ctx.measureText(text).width) + 26;
+  c.width = w; c.height = 68;
+  ctx = c.getContext("2d");
+  ctx.font = font;
+  ctx.fillStyle = "rgba(207,216,227,.95)";
+  ctx.shadowColor = "rgba(0,0,0,.95)"; ctx.shadowBlur = 10;
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, 13, 36);
+  const mat = new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false });
+  const spr = new THREE.Sprite(mat);
+  const k = 0.085;
+  spr.scale.set(w * k, 68 * k, 1);
+  spr.position.set(0, 5.6, 0);
+  labelCache.set(text, spr);
+  return spr.clone();
+}
+
+function nodeObj(node) {
+  const color = groupColor(node.group);
+  const sel = node._lit, dim = node._dim;
+  const isCore = node.id === "core";
+  const size = isCore ? 11 : (node._born ? 9 : (sel ? 6.5 : 4.5));
+  const mat = new THREE.SpriteMaterial({
+    map: GLOW, color: dim ? 0x22303d : color, transparent: true,
+    opacity: dim ? 0.28 : (sel ? 1 : 0.85), blending: THREE.AdditiveBlending, depthWrite: false
+  });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(size, size, 1);
+  if (isCore) CORE_SPRITE = sprite;                 // the breathe() loop pulses it
+  if (labelsOn && (sel || isCore || (node._deg || 0) >= HUB_DEG) && node.label) {
+    const g = new THREE.Group();
+    g.add(sprite);
+    g.add(labelSprite(node.label));
+    return g;
+  }
+  return sprite;
+}
+
+function srcId(l) { return typeof l.source === "object" ? l.source.id : l.source; }
+function nodeById(id) { const s = String(id); return graph.nodes.find(x => String(x.id) === s); }
+function linkTint(l) {
+  const n = nodeById(srcId(l));
+  if (!n) return "rgba(90,130,170,0.22)";
+  const c = groupColor(n.group);
+  const a = n._lit ? 0.55 : 0.22;
+  return "rgba(" + Math.round(c.r * 255) + "," + Math.round(c.g * 255) + "," + Math.round(c.b * 255) + "," + a + ")";
+}
+function linkParticles(l) {
+  const s = srcId(l);
+  if (s === "core") return 5;                       // energy always flows out of the core
+  const n = nodeById(s);
+  return (n && n._lit) ? 4 : 1.3;                   // lit answers stream brighter
+}
+function applyLinkLook() {                          // re-evaluate after lighting changes
+  fg.linkColor(linkTint);
+  fg.linkDirectionalParticles(linkParticles);
+}
+
+const fg = ForceGraph3D()($( "stage" ))
+  .backgroundColor("#000004")
+  .showNavInfo(false)
+  .nodeThreeObject(nodeObj)
+  .nodeThreeObjectExtend(false)
+  .linkColor(linkTint)
+  .linkWidth(0.35)
+  .linkOpacity(0.5)
+  .linkDirectionalParticles(linkParticles)
+  .linkDirectionalParticleSpeed(0.0045)
+  .linkDirectionalParticleWidth(1.4)
+  .onNodeClick((node) => {
+    userTouched();
+    focusNode(node, false);
+  })
+  .onNodeHover((node) => {
+    hoverNode = node;
+    $("stage").style.cursor = node ? "pointer" : "";
+  });
+
+fg.d3Force("charge").strength(-90);
+/* the permission tree hugs tighter than the note web, so the shelves orbit
+   the core instead of dangling off the bottom of the galaxy */
+fg.d3Force("link").distance(l => (l && l.why === "permission") ? 14 : 30);
+fg.controls().autoRotate = true;
+fg.controls().autoRotateSpeed = 0.35;
+function pauseIdle() {
+  fg.controls().autoRotate = false;
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => { if (!speaking && focusRotate) fg.controls().autoRotate = true; }, 15000);
+}
+function userTouched() { pauseIdle(); }
+
+/* starfield + three soft nebulae: depth and colour behind the shelves */
+(function stars() {
+  const N = 1600, pos = new Float32Array(N * 3);
+  for (let i = 0; i < N; i++) {
+    const r = 1400 + Math.random() * 1600, t = Math.random() * Math.PI * 2, p = Math.acos(2 * Math.random() - 1);
+    pos[i * 3] = r * Math.sin(p) * Math.cos(t);
+    pos[i * 3 + 1] = r * Math.cos(p);
+    pos[i * 3 + 2] = r * Math.sin(p) * Math.sin(t);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+  const pts = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0x8fa8bf, size: 2.2,
+    sizeAttenuation: true, transparent: true, opacity: 0.55, depthWrite: false }));
+  fg.scene().add(pts);
+  STARFIELD = pts;
+  [["#1b3b6f", -420, 180, -260, 900], ["#3d1b5c", 380, -140, -200, 780],
+   ["#123f38", 120, 260, 300, 700]].forEach(([col, x, y, z, r]) => {
+    const mat = new THREE.SpriteMaterial({ map: GLOW, color: col, transparent: true,
+      opacity: 0.16, blending: THREE.AdditiveBlending, depthWrite: false });
+    const s = new THREE.Sprite(mat);
+    s.position.set(x, y, z); s.scale.set(r, r, 1);
+    fg.scene().add(s); NEBULAE.push(s);
+  });
+})();
+
+/* the breathe loop: the stars drift, the nebulae swirl, the core pulses -
+   the galaxy is never a still picture */
+(function breathe() {
+  requestAnimationFrame(breathe);
+  const t = performance.now() / 1000;
+  if (STARFIELD) STARFIELD.rotation.y = t * 0.004;
+  NEBULAE.forEach((s, i) => { s.material.rotation = t * 0.012 * (i % 2 ? -1 : 1); });
+  if (CORE_SPRITE) {
+    const k = 1 + 0.12 * Math.sin(t * 2.3);
+    CORE_SPRITE.scale.set(11 * k, 11 * k, 1);
+  }
+})();
+
+function renderGraph() {
+  computeDegrees();
+  /* the core IS the middle: pin it at the origin and the permission tree
+     wraps around the note galaxy instead of dangling off it */
+  const core = graph.nodes.find(n => n.id === "core");
+  if (core) { core.fx = 0; core.fy = 0; core.fz = 0; }
+  fg.graphData({ nodes: graph.nodes, links: graph.links });
+  refreshHud();
+  applyLinkLook();
+}
+
+function computeDegrees() {
+  const deg = {};
+  graph.links.forEach(l => {
+    const s = typeof l.source === "object" ? l.source.id : l.source;
+    const t = typeof l.target === "object" ? l.target.id : l.target;
+    deg[s] = (deg[s] || 0) + 1; deg[t] = (deg[t] || 0) + 1;
+  });
+  graph.nodes.forEach(n => { n._deg = deg[n.id] || 0; });
+}
+
+function clearLighting() {
+  graph.nodes.forEach(n => { n._lit = false; n._dim = false; n._born = false; });
+  applyLinkLook();
+}
+function focusNode(node, fromAnswer) {
+  clearLighting();
+  node._lit = true;
+  const neighbours = new Set();
+  graph.links.forEach(l => {
+    const s = typeof l.source === "object" ? l.source.id : l.source;
+    const t = typeof l.target === "object" ? l.target.id : l.target;
+    if (s === node.id) neighbours.add(t);
+    if (t === node.id) neighbours.add(s);
+  });
+  graph.nodes.forEach(n => { if (neighbours.has(n.id)) n._lit = true; else if (n.id !== node.id) n._dim = true; });
+  const d = 170;
+  const dist = p => Math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z) || 1;
+  const k = d / dist(node);
+  const cam = fg.cameraPosition();
+  fg.cameraPosition({ x: node.x * k + cam.x * 0.15, y: node.y * k + cam.y * 0.15, z: node.z * k + cam.z * 0.15 }, node, 900);
+  openPanel(node);
+  fg.nodeThreeObject(nodeObj);              // refresh objects
+  applyLinkLook();
+}
+function lightCluster(ids) {
+  clearLighting();
+  const set = new Set(ids);
+  graph.nodes.forEach(n => { if (set.has(n.id)) n._lit = true; else n._dim = true; });
+  fg.nodeThreeObject(nodeObj);
+  applyLinkLook();
+}
+function openPanel(node) {
+  $("panelTitle").textContent = node.label;
+  $("panelGroup").textContent = node.group;
+  $("panelExcerpt").textContent = node.excerpt;
+  $("panelFile").textContent = node.file;
+  panel.classList.add("open");
+}
+$("panelClose").onclick = () => panel.classList.remove("open");
+
+/* =========================== the consoles (left + right) =========================== */
+function refreshHud() {
+  const notes = graph.nodes.filter(n => typeof n.id === "number").length;
+  notecountEl.textContent = notes + " notes indexed \u00b7 " + graph.nodes.length + " stars in the galaxy";
+  $("memVal").textContent = notes;
+  $("linkVal").textContent = graph.links.length;
+  /* group legend, busiest first */
+  const counts = {};
+  graph.nodes.forEach(n => { counts[n.group || "notes"] = (counts[n.group || "notes"] || 0) + 1; });
+  const groups = Object.keys(counts).sort((a, b) => counts[b] - counts[a]).slice(0, 12);
+  $("legend").innerHTML = groups.map(g => {
+    const c = groupColor(g).getStyle();
+    return '<div class="lg" data-g="' + g.replace(/"/g, "") + '"><span class="dot" style="background:' + c +
+      '"></span>' + g.replace(/</g, "&lt;") + '<span class="n">' + counts[g] + "</span></div>";
+  }).join("");
+  Array.from($("legend").children).forEach((el, i) => {
+    el.onclick = () => { userTouched(); const n = graph.nodes.find(x => (x.group || "notes") === groups[i]); if (n) focusNode(n, false); };
+  });
+  /* top hubs by degree */
+  const hubs = graph.nodes.filter(n => (n._deg || 0) > 0)
+    .sort((a, b) => b._deg - a._deg).slice(0, 8);
+  $("hubs").innerHTML = hubs.map(n => {
+    const c = groupColor(n.group).getStyle();
+    return '<div class="hub" data-id="' + n.id + '"><span class="dot" style="background:' + c +
+      '"></span>' + n.label.replace(/</g, "&lt;") + '<span class="n">' + n._deg + "</span></div>";
+  }).join("") || '<div class="sNote">no links yet - ask Jarvis something.</div>';
+  Array.from($("hubs").children).forEach(el => {
+    el.onclick = () => { userTouched(); const n = nodeById(el.dataset.id); if (n) focusNode(n, false); };
+  });
+}
+
+/* search the brain: label matches first, then excerpt matches */
+$("searchBox").addEventListener("input", () => {
+  const q = $("searchBox").value.trim().toLowerCase();
+  const box = $("searchResults");
+  if (!q) { box.innerHTML = ""; return; }
+  const byLabel = [], byBody = [];
+  graph.nodes.forEach(n => {
+    const l = (n.label || "").toLowerCase(), e = (n.excerpt || "").toLowerCase();
+    if (l.includes(q)) byLabel.push(n);
+    else if (e.includes(q)) byBody.push(n);
+  });
+  const hits = byLabel.concat(byBody).slice(0, 8);
+  box.innerHTML = hits.map(n => {
+    const c = groupColor(n.group).getStyle();
+    return '<div class="res" data-id="' + n.id + '"><span class="dot" style="background:' + c + '"></span>' +
+      n.label.replace(/</g, "&lt;") + "</div>";
+  }).join("") || '<div class="sNote">nothing in the brain matches.</div>';
+  Array.from(box.children).forEach(el => {
+    el.onclick = () => { userTouched(); const n = nodeById(el.dataset.id); if (n) { focusNode(n, false); } };
+  });
+});
+
+/* forces */
+$("fRepel").oninput = (e) => {
+  fg.d3Force("charge").strength(-e.target.value);
+  $("vRepel").textContent = e.target.value;
+  fg.d3ReheatSimulation();
+};
+$("fLink").oninput = (e) => {
+  fg.d3Force("link").distance(+e.target.value);
+  $("vLink").textContent = e.target.value;
+  fg.d3ReheatSimulation();
+};
+
+/* right-hand toggles: every one does something real, nothing is decoration */
+$("tglEyes").onclick = () => { labelsOn = !labelsOn; $("tglEyes").classList.toggle("on", labelsOn); fg.nodeThreeObject(nodeObj); };
+$("tglHolo").onclick = () => {
+  const off = document.body.classList.toggle("holo-off");
+  $("tglHolo").classList.toggle("on", !off);
+};
+$("tglFocus").onclick = () => {
+  focusRotate = !focusRotate;
+  $("tglFocus").classList.toggle("on", focusRotate);
+  fg.controls().autoRotate = focusRotate;
+};
+$("tglReflect").onclick = () => {
+  clearLighting();
+  fg.nodeThreeObject(nodeObj);
+  panel.classList.remove("open");
+  $("searchBox").value = ""; $("searchResults").innerHTML = "";
+  fg.zoomToFit(700, 90);
+  userTouched();
+};
+
+/* right-click a node: draft a memory from it (the capture box does the rest) */
+$("stage").addEventListener("contextmenu", (e) => {
+  if (!hoverNode) return;
+  e.preventDefault();
+  input.value = "remember that ";
+  input.focus();
+  showBadge("Draft a memory, sir - it will be born near \u201C" + hoverNode.label + "\u201D");
+});
+
+/* dial tick ring */
+(function dialTicks() {
+  const g = $("dialTicks");
+  let html = "";
+  for (let i = 0; i < 60; i++) {
+    const a = (i / 60) * Math.PI * 2;
+    const long = i % 5 === 0;
+    const r1 = long ? 50 : 54, r2 = 57;
+    const x1 = 60 + r1 * Math.cos(a), y1 = 60 + r1 * Math.sin(a);
+    const x2 = 60 + r2 * Math.cos(a), y2 = 60 + r2 * Math.sin(a);
+    html += '<line x1="' + x1.toFixed(1) + '" y1="' + y1.toFixed(1) + '" x2="' + x2.toFixed(1) +
+      '" y2="' + y2.toFixed(1) + '" stroke="' + (long ? "rgba(110,231,255,.6)" : "rgba(110,160,200,.3)") +
+      '" stroke-width="' + (long ? 1.4 : 0.8) + '"/>';
+  }
+  g.innerHTML = html;
+})();
+
+/* =========================== THE ONE SPEAK FUNCTION =========================== */
+/* Every sound this page makes goes through speak(). The ?mute=1 gate lives
+   HERE and nowhere else - nothing can route around it. */
+function speak(text, opts) {
+  if (MUTE) {                    // silent tab: never speaks, but still reports
+    Promise.resolve().then(reportResources);   // its resource trail for the drill
+    return Promise.resolve("muted");
+  }
+  opts = opts || {};
+  const chunks = packSentences(text, CHUNK_CHARS);
+  chunkAbort = new AbortController();
+  speaking = true; speakingGate = true;
+  setBusy("speak");
+  let mode = (opts.forceBrowser ? "browser" : "try-local");
+  return playChunks(chunks, mode).finally(() => {
+    speaking = false; speakingGate = false;
+    setBusy("idle");
+    reportResources();
+  });
+}
+function stopSpeaking() {
+  if (!speaking) return;
+  if (chunkAbort) { try { chunkAbort.abort(); } catch (e) {} }
+  if (currentAudio) { try { currentAudio.pause(); } catch (e) {} currentAudio = null; }
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  speaking = false; speakingGate = false;
+  setBusy("idle");
+}
+function packSentences(text, target) {
+  const sentences = String(text).match(/[^.!?…]+[.!?…]+["')\]]*|\S+$/g) || [text];
+  const chunks = []; let cur = "";
+  for (const s of sentences) {                     // sentence-packed, never cut inside a sentence
+    if (cur && (cur + s).length > target) { chunks.push(cur.trim()); cur = s; }
+    else cur += s;
+  }
+  if (cur.trim()) chunks.push(cur.trim());
+  return chunks;
+}
+async function playChunks(chunks, mode) {
+  const signal = () => chunkAbort ? chunkAbort.signal : null;
+  const prefetched = new Array(chunks.length).fill(null);
+  for (let i = 0; i < chunks.length; i++) {
+    if (!speakingGate) return;
+    if (mode === "try-local") {
+      const blob = await fetchTtsBlob(chunks[i]);
+      if (blob === false) return;                       // aborted mid-fetch
+      if (blob) { prefetched[i] = blob; mode = "local"; }
+      else { mode = "browser"; lastVoice = "browser"; showBadge("VOICE browser (stand-in)", true); }
+    }
+    if (mode === "local") {
+      let blob = prefetched[i];
+      if (!blob) {
+        blob = await fetchTtsBlob(chunks[i]);
+        if (blob === false) return;
+        if (!blob) { mode = "browser"; lastVoice = "browser"; showBadge("VOICE browser (stand-in)", true); }
+      }
+      // fetch chunk i+1 while chunk i plays, so playback never gaps
+      if (mode === "local" && i + 1 < chunks.length && !prefetched[i + 1]) {
+        prefetched[i + 1] = fetchTtsBlob(chunks[i + 1]);   // a promise, in flight during playback
+      }
+      if (mode === "local") {
+        const url = URL.createObjectURL(blob);
+        await playAudio(url);
+        URL.revokeObjectURL(url);
+        continue;
+      }
+    }
+    /* THE BROWSER LAW: the web voices open a new connection for EVERY
+       utterance, so small chunks mean a pause between every phrase - the
+       \u201ctwo words, stop, two words\u201d bug. The rest of the answer goes out in
+       ONE pass, sentence-packed under the hood, queued in a single breath. */
+    await playBrowserVoice(chunks.slice(i).join(" "));
+    return;
+  }
+}
+async function fetchTtsBlob(text) {
+  try {
+    const res = await fetch("/tts", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: text }), signal: chunkAbort ? chunkAbort.signal : undefined
+    });
+    if (res.ok) {
+      const tag = res.headers.get("X-Jarvis-Voice") || "local:Jarvis";
+      if (tag !== lastVoice) { lastVoice = tag; showBadge("VOICE " + tag); }
+      return await res.blob();
+    }
+    return null;                                        // engine not home -> fallback signal
+  } catch (e) {
+    return (chunkAbort && chunkAbort.signal.aborted) ? false : null;
+  }
+}
+function playAudio(url, controller) {
+  return new Promise((resolve) => {
+    const a = new Audio(url);
+    currentAudio = a;
+    a.onended = resolve; a.onerror = resolve;
+    a.play().catch(resolve);
+  });
+}
+/* The browser stand-in speaks the WHOLE remaining answer in one pass: pieces
+   are sentence-packed at BROWSER_CHUNK so no network re-connection sits
+   between two words. A watchdog nudges Chrome, which likes to pause long
+   speech in background tabs. */
+function pickBrowserTune(v) {
+  const n = ((v && v.name) || "").toLowerCase();
+  if (/natural|online|neural|premium|enhanced/.test(n)) return { rate: 1.0, pitch: 1.0 };
+  return { rate: 0.97, pitch: 0.85 };   // the old robotic SAPI voices take a shade of depth
+}
+function playBrowserVoice(text) {
+  const myToken = ++browserSpeakToken;
+  return new Promise((resolve) => {
+    if (!window.speechSynthesis) return resolve();
+    const pieces = packSentences(text, BROWSER_CHUNK);
+    let i = 0, done = false, watchdog = null;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      if (watchdog) clearInterval(watchdog);
+      resolve();
+    };
+    watchdog = setInterval(() => {
+      if (browserSpeakToken !== myToken) return finish();
+      if (speechSynthesis.speaking && !speechSynthesis.paused) {
+        speechSynthesis.pause(); speechSynthesis.resume();
+      }
+    }, 9000);
+    const next = () => {
+      if (browserSpeakToken !== myToken || done) return finish();
+      if (i >= pieces.length) return finish();
+      const u = new SpeechSynthesisUtterance(pieces[i++]);
+      const v = pickBrowserVoice();
+      if (v) { u.voice = v; u.lang = v.lang; } else u.lang = "en-GB";
+      const tune = pickBrowserTune(v);
+      u.rate = tune.rate; u.pitch = tune.pitch;
+      u.onend = next; u.onerror = () => finish();
+      speechSynthesis.speak(u);
+    };
+    next();
+  });
+}
+
+/* The browser STAND-IN voice, ranked: a male British-butler register first,
+   then anything male and English, then any English. A female voice only ever
+   casts when there is literally no male English voice installed. Novelty
+   voices sink without a trace. The real Jarvis voice is VoiceStudio's clone -
+   this is only the understudy, and the VO menu lets you cast it yourself. */
+function rankBrowserVoice(v) {
+  const n = (v.name || "").toLowerCase();
+  const lang = (v.lang || "").toLowerCase().replace("_", "-");
+  if (!lang.startsWith("en")) return -1e9;
+  let s = lang.startsWith("en-gb") ? 40 : (lang.startsWith("en-au") || lang.startsWith("en-ie")) ? 20 : 10;
+  if (/google uk english male/.test(n)) s += 80;
+  if (/ryan/.test(n)) s += 60;                     // Edge's natural British male
+  if (/(george|daniel|arthur|oliver|thomas|charles|james|paul|steffan|william)/.test(n)) s += 44;
+  if (/(guy|david|mark|christopher|eric|alex|brian|liam|noah|andrew|roger|austin|matthew|joey|male)/.test(n)) s += 24;
+  if (/natural|online/.test(n)) s += 8;
+  if (/(female|zira|sonia|hazel|susan|kate|serena|fiona|aria|jenny|libby|maisie|michelle|amon|emma|ava|allison|joanna|kendra|kimberly|sally|clara|olivia|natasha|elli|linda|heather|woman)/.test(n)) s -= 500;
+  if (/(espeak|compact|novelty|whisper|bells|bubbles|cello|deranged|hysterical|good news|bad news|organ|superstar|trinoids|albert|zarvox|boing|jester|wobble|junior|kathy|ralph|princess|rocko|shelley|grandma|grandpa|sandy|flo|eddy)/.test(n)) s -= 1e7;
+  return s;
+}
+function pickBrowserVoice() {
+  if (!voices.length) voices = speechSynthesis.getVoices();
+  const saved = localStorage.getItem("jarvis-voice");
+  if (saved) { const v = voices.find(x => x.voiceURI === saved); if (v) return v; }
+  const ranked = voices.map(v => [rankBrowserVoice(v), v]).filter(x => x[0] > -1e9)
+                       .sort((a, b) => b[0] - a[0]);
+  return ranked.length ? ranked[0][1] : (voices[0] || null);
+}
+function populateVoiceMenu() {
+  const sel = $("voiceSel"); if (!sel) return;
+  const saved = localStorage.getItem("jarvis-voice") || "auto";
+  const opts = ['<option value="auto">auto (butler)</option>'].concat(
+    voices.filter(v => /^en[-_]/i.test(v.lang || "")).slice(0, 80)
+          .map(v => `<option value="${(v.voiceURI || "").replace(/"/g, "&quot;")}">${(v.name || "voice").replace(/</g, "&lt;").slice(0, 42)}</option>`));
+  sel.innerHTML = opts.join("");
+  sel.value = [...sel.options].some(o => o.value === saved) ? saved : "auto";
+}
+
+/* =========================== the ears (mic) =========================== */
+async function startMic() {
+  if (micReady) return;
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+    const src = audioCtx.createMediaStreamSource(micStream);
+    const proc = audioCtx.createScriptProcessor(4096, 1, 1);
+    let collecting = false, buf = [], lastLoud = 0, utterStart = 0;
+    src.connect(proc); proc.connect(audioCtx.destination);
+    proc.onaudioprocess = (ev) => {
+      const x = ev.inputBuffer.getChannelData(0);
+      let sum = 0; for (let i = 0; i < x.length; i++) sum += x[i] * x[i];
+      const rms = Math.sqrt(sum / x.length);
+      noiseFloor = Math.min(noiseFloor * 0.999 + rms * 0.001, rms < noiseFloor ? rms : noiseFloor);
+      const threshold = speakingGate ? Math.max(0.05, noiseFloor * 4 + 0.02)   // raised while Jarvis speaks
+                                     : Math.max(0.015, noiseFloor * 2.5 + 0.008);
+      const now = performance.now();
+      if (rms > threshold) {
+        if (!collecting) { collecting = true; buf = []; utterStart = now; setStatus(listening ? "listening&hellip; <b>&#9679;</b>" : "listening&hellip;"); }
+        lastLoud = now; buf.push(new Float32Array(x));
+      } else if (collecting && now - lastLoud > SILENCE_MS) {
+        collecting = false;
+        if (now - utterStart >= MIN_UTTERANCE_MS) handleUtterance(mergeBuffers(buf, audioCtx.sampleRate));
+        buf = [];
+      }
+    };
+    micReady = true; listening = true; earMode = "server";
+    if (!wakeOn) setBusy("idle");
+  } catch (e) {
+    const n = (e && e.name) || "";
+    if (n === "NotAllowedError" || n === "SecurityError")
+      setStatus("microphone BLOCKED - click the lock/tune icon by the address bar, set Microphone to " +
+                "Allow, then press the mic again. Typing still works.");
+    else if (n === "NotFoundError" || n === "DevicesNotFoundError")
+      setStatus("no microphone found - plug one in or pick it in the sound settings. Typing still works.");
+    else
+      setStatus("microphone unavailable - " + ((e && e.message) || n) + ". Typing still works.");
+    if (window.webkitSpeechRecognition) startBrowserEars();   // its own mic prompt may still pass
+  }
+}
+function mergeBuffers(chunks, rate) {
+  let len = 0; chunks.forEach(c => len += c.length);
+  const out = new Float32Array(len); let off = 0;
+  chunks.forEach(c => { out.set(c, off); off += c.length; });
+  return encodeWav(out, rate);
+}
+function encodeWav(samples, rate) {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const v = new DataView(buffer);
+  const ws = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+  ws(0, "RIFF"); v.setUint32(4, 36 + samples.length * 2, true); ws(8, "WAVE");
+  ws(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  ws(36, "data"); v.setUint32(40, samples.length * 2, true);
+  let o = 44;
+  for (let i = 0; i < samples.length; i++, o += 2) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    v.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  return buffer;
+}
+
+/* one captured utterance -> the right ear -> the finish window */
+async function handleUtterance(wavBuffer) {
+  let mode = "full";
+  if (speakingGate) mode = "interrupt";
+  else if (wakeOn && !awaitingCommand && !ptt) mode = "wake";   // push-to-talk bypasses the wake word
+  setBusy("transcribe");
+  try {
+    const res = await fetch("/hear?mode=" + mode, { method: "POST", body: wavBuffer,
+      headers: { "Content-Type": "audio/wav" } });
+    if (res.status === 501) {                                   // Whisper missing
+      setStatus("switching to the browser ears - say that again, sir.");
+      startBrowserEars();
+      return;
+    }
+    const data = await res.json();
+    if (mode === "interrupt") {
+      if (data.text) { stopSpeaking(); setBusy("heard", data.text); }
+      return;
+    }
+    if (mode === "wake") {
+      if (data.discarded || !data.text) { if (data.wake_only) { awaitingCommand = true; speak("Yes, sir?"); } return; }
+      awaitingCommand = false;
+    }
+    bufferTranscript(data.text || "");
+  } catch (e) {
+    setBusy("idle");
+  }
+}
+
+/* FINISH WINDOW: buffer the transcript, wait FINISH_MS for more speech,
+   append and restart if it arrives; the pause that truly ends the thought
+   sends the whole combined sentence. */
+function bufferTranscript(text) {
+  setBusy("heard", text);
+  utteranceBuffer = utteranceBuffer ? utteranceBuffer + " " + text : text;
+  clearTimeout(finishTimer);
+  finishTimer = setTimeout(() => {
+    const full = utteranceBuffer.trim();
+    utteranceBuffer = "";
+    if (full) dispatch(full);
+  }, FINISH_MS);
+}
+
+/* =========================== browser ears fallback =========================== */
+/* Woken at BOOT when the server has no Whisper (no dead mic, no waiting for a
+   failed round-trip), or on demand. Continuous, with the wake law enforced
+   client-side when WAKE is on: only "Jarvis..." passes. */
+function startBrowserEars(detail) {
+  earMode = "browser";
+  if (!window.webkitSpeechRecognition) {
+    setStatus("no ears available: use Chrome or Edge for the browser ears (0 MB, free), " +
+              "or install the offline Whisper ears (see README, 'The ears'). Typing still works.");
+    return;
+  }
+  if (recognition) {                                            // already cast - just listen
+    browserEarsOn = true;
+    try { recognition.start(); } catch (e) {}
+    return;
+  }
+  recognition = new webkitSpeechRecognition();
+  recognition.continuous = true; recognition.interimResults = true; recognition.lang = "en-GB";
+  browserEarsOn = true;
+  let finalText = "";
+  recognition.onresult = (ev) => {
+    let interim = "";
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const r = ev.results[i];
+      if (r.isFinal) finalText += r[0].transcript + " ";
+      else interim += r[0].transcript;
+    }
+    if (speakingGate && /\b(stop|wait)\b/i.test(interim + finalText)) { stopSpeaking(); finalText = ""; return; }
+    if (finalText.trim()) {
+      let t = finalText.trim(); finalText = "";
+      if (wakeOn && !awaitingCommand && !ptt) {                 // the wake law, browser edition
+        if (!WAKE_WORDS.test(t)) { setStatus("heard (no wake name) - discarded"); return; }
+        t = t.replace(WAKE_WORDS, "").trim();
+        if (!t) { awaitingCommand = true; speak("Yes, sir?"); return; }
+        awaitingCommand = false;
+      }
+      bufferTranscript(t);
+    }
+    else if (interim) setStatus("listening&hellip; <i>" + interim.slice(-40) + "</i>");
+  };
+  recognition.onerror = () => {};
+  recognition.onend = () => { if (browserEarsOn) { try { recognition.start(); } catch (e) {} } };
+  try { recognition.start(); } catch (e) {}
+  lastVoice = lastVoice || "browser";
+  showBadge("EARS browser (0 MB, free) - " + (detail ? detail.slice(0, 110) : "Whisper not installed"), true);
+  if (!wakeOn) setBusy("idle");
+}
+function toggleBrowserEars() {
+  if (!recognition) { startBrowserEars(); return; }
+  browserEarsOn = !browserEarsOn;
+  try { browserEarsOn ? recognition.start() : recognition.stop(); } catch (e) {}
+  $("micBtn").classList.toggle("rec", browserEarsOn);
+  showBadge(browserEarsOn ? "EARS browser listening" : "EARS browser paused");
+}
+
+/* =========================== dispatch: text in, answer out =========================== */
+async function dispatch(text) {
+  const t = text.trim();
+  if (!t) return;
+  if (speakingGate && /^(stop|wait)\b/i.test(t)) { stopSpeaking(); return; }
+  userTouched();
+  setBusy("think");
+  try {
+    const res = await fetch("/chat", { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: t }) });
+    const data = await res.json();
+    if (data.badge) showBadge("BRAIN " + data.brain);
+    if (data.route === "arms" && data.arm) showBadge("ARMS " + data.arm.toUpperCase());
+    if (data.route === "memory") showBadge("MEMORY");
+    if (data.brain !== lastBrain) { lastBrain = data.brain; if (!data.badge) showBadge("BRAIN " + data.brain); }
+    /* the brain's complaint, with the vendor's own words and the way out */
+    if (data.brain_error) {
+      $("brainErr").classList.add("show");
+      $("brainErrText").textContent = data.brain_error.why.toUpperCase() + " \u00B7 " + data.brain_error.detail;
+    } else $("brainErr").classList.remove("show");
+    if (data.capture) { if (data.capture.ok) addNote(data.capture); }
+    else if (data.answer) showAnswerAndFly(data);
+    if (data.answer) speak(data.answer, { forceBrowser: data.voice_pref === "browser" });
+    setBusy("idle");
+  } catch (e) {
+    setBusy("idle");
+    setStatus("the server did not answer - is main.py running?");
+  }
+}
+function showAnswerAndFly(data) {
+  answerEl.style.display = "block";
+  answerEl.textContent = data.answer;
+  clearTimeout(answerEl._t);
+  answerEl._t = setTimeout(() => { answerEl.style.display = "none"; }, 25000);
+  const nodes = data.nodes || [];
+  if (!data.on_topic || !nodes.length) return;          // small talk: the camera holds still
+  if (nodes.length >= 4) lightCluster(nodes);           // 4+ sources: light the whole cluster
+  else { const n = nodeById(nodes[0]); if (n) focusNode(n, true); }   // fly to the top source
+}
+
+/* =========================== total recall: a star is born =========================== */
+/* THE ONE viewer-side door: addNote - birth at the anchor, link, pulse, fly. */
+function addNote(info) {
+  const anchor = nodeById(info.anchor);
+  const g = fg.graphData();
+  const node = {
+    id: info.index, label: info.label, group: info.group || "captures",
+    excerpt: info.excerpt || "", file: info.file || "",
+    x: anchor ? anchor.x + (Math.random() - 0.5) * 40 : (Math.random() - 0.5) * 300,
+    y: anchor ? anchor.y + (Math.random() - 0.5) * 40 : (Math.random() - 0.5) * 300,
+    z: anchor ? anchor.z + (Math.random() - 0.5) * 40 : (Math.random() - 0.5) * 300,
+    _born: true
+  };
+  g.nodes.push(node);
+  (info.links || []).forEach(l => {
+    g.links.push({ source: l.source !== undefined ? l.source : info.index,
+                   target: l.target !== undefined ? l.target : info.index });
+  });
+  fg.graphData(g);
+  graph.nodes = g.nodes; graph.links = g.links;
+  computeDegrees();
+  refreshHud();
+  // glow pulse, then the camera flies to it
+  let pulse = 0;
+  const iv = setInterval(() => {
+    pulse += 0.5;
+    nodeObj(node);
+    if (pulse > 6) { clearInterval(iv); node._born = false; fg.nodeThreeObject(nodeObj); }
+  }, 90);
+  setTimeout(() => focusNode(node, true), 350);
+}
+
+/* =========================== controls =========================== */
+$("micBtn").addEventListener("mousedown", startPTT);
+$("micBtn").addEventListener("touchstart", (e) => { e.preventDefault(); startPTT(); });
+["mouseup", "mouseleave", "touchend"].forEach(ev => $("micBtn").addEventListener(ev, endPTT));
+let ptt = false;
+function startPTT() {
+  if (earMode === "browser") { toggleBrowserEars(); return; }   // always-on ears: the button pauses them
+  ptt = true; $("micBtn").classList.add("rec"); if (!micReady) startMic();
+}
+function endPTT() {
+  if (!ptt) return;
+  ptt = false; $("micBtn").classList.remove("rec");
+  // nothing to flush: the VAD already emits utterances as they end
+}
+$("wakeBtn").onclick = () => {
+  wakeOn = !wakeOn;
+  $("wakeBtn").textContent = wakeOn ? "WAKE \u00B7 ON" : "WAKE";
+  $("wakeBtn").classList.toggle("active", wakeOn);
+  if (!micReady) startMic();
+  showBadge(wakeOn ? "Wake word ON - say \u201CJarvis\u2026\u201D" : "Wake word OFF");
+};
+input.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  const t = input.value; input.value = "";
+  dispatch(t);
+});
+document.addEventListener("keydown", (e) => {
+  if (e.code === "Space" && document.activeElement !== input) { e.preventDefault(); if (!ptt) startPTT(); }
+  if (e.code === "Escape") {
+    panel.classList.remove("open");
+    $("armory").classList.remove("open");
+    clearLighting();
+    fg.nodeThreeObject(nodeObj);
+  }
+});
+document.addEventListener("keyup", (e) => { if (e.code === "Space" && ptt) endPTT(); });
+document.addEventListener("pointerdown", firstTouch, { once: true });
+
+/* =========================== the tool armory =========================== */
+let armData = { arms: [], skills: { armed: [], pending: [] } };
+/* the holocam: raise it, strike it. The blank window opens synchronously inside
+   the click (that is what beats the popup blocker), then navigates once the
+   server tells us the real URL; on failure it closes, ashamed. */
+async function holocamAction(action) {
+  let w = null;
+  if (action === "start") w = window.open("", "_blank");
+  try {
+    const res = await fetch("/arms/holocam", { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+    const data = await res.json();
+    if (action === "start") {
+      if (data.url && w) w.location = data.url; else if (w) w.close();
+      if (data.url) { $("tglHolocam").classList.add("on"); holocamUp = true;
+        showBadge("HOLOCAM LIVE - allow the camera"); }
+      else { if (w) w.close(); showBadge(data.answer || "the holocam did not rise", true); }
+    } else {
+      $("tglHolocam").classList.remove("on"); holocamUp = false;
+      showBadge(data.answer || "HOLOCAM DOWN");
+    }
+  } catch (e) {
+    if (w) w.close();
+    showBadge("the holocam did not answer - is main.py running?", true);
+  }
+  loadArms();
+}
+$("tglHolocam").onclick = () =>
+  holocamAction($("tglHolocam").classList.contains("on") ? "stop" : "start");
+$("tglArms").onclick = () => {
+  const opening = !$("armory").classList.contains("open");
+  $("armory").classList.toggle("open", opening);
+  if (opening) loadArms();
+};
+$("armClose").onclick = () => $("armory").classList.remove("open");
+$("armSearch").addEventListener("input", renderArms);
+async function loadArms() {
+  try {
+    const res = await fetch("/arms");
+    armData = await res.json();
+    renderArms(); renderSkills();
+  } catch (e) {
+    $("armList").innerHTML = '<div class="sNote">the armory did not answer - is main.py running?</div>';
+  }
+}
+function renderArms() {
+  const q = ($("armSearch").value || "").toLowerCase();
+  const rows = (armData.arms || []).filter(a => !q || (a.name + " " + a.desc).toLowerCase().includes(q));
+  $("armList").innerHTML = rows.map(a => {
+    const cls = a.status === "ready" ? "ready" : (a.status === "gated" ? "" : "off");
+    const holo = (armData.holocam || {});
+    const pc = a.name === "holocam" && a.status === "ready"
+      ? '<button class="act" data-holocam="' + (holo.up ? "stop" : "start") + '">' +
+        (holo.up ? "STRIKE THE HOLOCAM" : "RAISE THE HOLOCAM") + "</button>" +
+        '<div class="how">' + (holo.up ? "live at " : "will live at ") + (holo.url || "http://127.0.0.1:8794/stage.html") + "</div>"
+      : a.name === "hands" && a.status !== "needs install"
+      ? '<button class="act' + (a.status === "ready" ? " danger" : "") + '" data-pc="' +
+        (a.status === "ready") + '">' + (a.status === "ready" ? "LOCK THE HANDS" : "ENABLE THE HANDS") + "</button>"
+      : (a.how ? '<div class="how">' + a.how + "</div>" : "");
+    return '<div class="armRow"><div class="top"><span class="nm">' + a.name +
+      '</span><span class="pill ' + cls + '">' + a.status.toUpperCase() +
+      '</span></div><div class="ds">' + a.desc + "</div>" + pc + "</div>";
+  }).join("") || '<div class="sNote">nothing matches, sir.</div>';
+  document.querySelectorAll("[data-pc]").forEach(b => b.onclick = async () => {
+    const enable = b.dataset.pc !== "true";
+    if (enable && !confirm("Give Jarvis hands on this PC?\n\n" +
+        "He will type, click, scroll and open apps ONLY when you ask - but they are your real windows and your real keys.")) return;
+    await fetch("/arms/pc", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: enable }) });
+    showBadge("HANDS " + (enable ? "ARMED" : "LOCKED"), !enable);
+    loadArms();
+  });
+  document.querySelectorAll("[data-holocam]").forEach(b => b.onclick = () => holocamAction(b.dataset.holocam));
+}
+function renderSkills() {
+  const P = (armData.skills || {}).pending || [], A = (armData.skills || {}).armed || [];
+  $("pendingList").innerHTML = P.map(s => '<div class="skRow"><span class="nm">' + s.name +
+    '</span><span class="ds">' + (s.description || "") +
+    '</span><button class="ok" data-ok="' + s.name + '">APPROVE</button>' +
+    '<button class="no" data-no="' + s.name + '">REJECT</button></div>').join("")
+    || '<div class="sNote">none pending. Say &ldquo;make a skill that&hellip;&rdquo;</div>';
+  $("armedList").innerHTML = A.map(s => '<div class="skRow"><span class="nm">' + s.name +
+    '</span><span class="ds">' + (s.description || "") + "</span></div>").join("")
+    || '<div class="sNote">none armed yet. Approve a draft, or say &ldquo;run skill &hellip;&rdquo;</div>';
+  document.querySelectorAll("[data-ok]").forEach(b => b.onclick = async () => {
+    await fetch("/skills/approve", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: b.dataset.ok }) });
+    showBadge("SKILL " + b.dataset.ok + " ARMED");
+    loadArms();
+  });
+  document.querySelectorAll("[data-no]").forEach(b => b.onclick = async () => {
+    await fetch("/skills/reject", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: b.dataset.no }) });
+    loadArms();
+  });
+}
+
+/* boot: the greeting fires after the first interaction (browsers block autoplay
+   before one), and the real note count is read from the graph data. */
+let greeted = false;
+function firstTouch() {
+  userTouched();
+  startMic();
+  if (!greeted && !MUTE) {
+    greeted = true;
+    speak("Hello, sir.");
+  }
+}
+
+/* =========================== boot =========================== */
+async function boot() {
+  try {
+    const [gRes, hRes] = await Promise.all([fetch("/graph"), fetch("/health")]);
+    graph = await gRes.json();
+    const h = await hRes.json();
+    /* first boot, no agent chosen yet: the setup screen comes first -
+       pick the brain, paste the key, no config files touched. */
+    if (h.setup_needed) { location.href = "/setup.html"; return; }
+    renderGraph();
+    /* let the simulation settle, then frame the whole galaxy */
+    setTimeout(() => fg.zoomToFit(900, 70), 1300);
+    /* the boot splash has done its spin; the HUD takes over */
+    setTimeout(() => { const bs = $("bootSplash"); if (bs) bs.classList.add("gone"); }, 350);
+    setTimeout(() => { const bs = $("bootSplash"); if (bs) bs.remove(); }, 1300);
+    lastBrain = h.brain;
+    lastVoice = h.voice === "local" ? "local:Jarvis" : (h.voice === "cloud" ? "cloud:Jarvis" : "browser");
+    setStatus("Jarvis is awake. " + (MUTE ? "This tab is muted (?mute=1)." : "Say hello, sir."));
+    /* THE EARS DECIDE AT BOOT: whisper on the server, or the browser's own
+       ears wake NOW - the mic never sits dead waiting for a failed round-trip */
+    if (h.ears === "whisper") { earMode = "server"; }
+    else { startBrowserEars(h.ears_detail); }
+    if (h.voice === "cloud") showBadge("VOICE cloud tier (the agent key speaks)");
+    else if (h.voice === "browser" && h.voice_detail && h.voice_detail.detail) {
+      showBadge("VOICE browser stand-in \u00B7 " + h.voice_detail.detail.slice(0, 90), true);
+    }
+    if (h.brain_error) {   // the last brain failure survives a reload, plainly stated
+      $("brainErr").classList.add("show");
+      $("brainErrText").textContent = h.brain_error.why.toUpperCase() + " \u00B7 " + h.brain_error.detail;
+    }
+  } catch (e) {
+    setStatus("the server did not answer - is main.py running?");
+    setTimeout(() => { const bs = $("bootSplash"); if (bs) bs.classList.add("gone"); }, 350);
+    setTimeout(() => { const bs = $("bootSplash"); if (bs) bs.remove(); }, 1300);
+  }
+  if (window.speechSynthesis) {
+    voices = speechSynthesis.getVoices();
+    populateVoiceMenu();
+    speechSynthesis.onvoiceschanged = () => { voices = speechSynthesis.getVoices(); populateVoiceMenu(); };
+  }
+}
+boot();
+
+/* the VO menu: casting the browser stand-in voice; the pick is saved here */
+$("voiceSel").onchange = () => {
+  localStorage.setItem("jarvis-voice", $("voiceSel").value);
+  if (MUTE) return;                       // the mute gate: nothing speaks in a muted tab
+  const v = pickBrowserVoice();
+  if (v) {
+    const u = new SpeechSynthesisUtterance("Standing by, sir.");
+    u.voice = v; u.lang = v.lang;
+    const tune = pickBrowserTune(v);
+    u.rate = tune.rate; u.pitch = tune.pitch;
+    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  }
+};
+
+/* the AGENT chip: the first-boot screen, any time - pick a brain, paste a key,
+   and config.json is written by the server, never by hand. */
+$("tglAgent").onclick = () => { location.href = "/setup.html"; };
+
+/* the drill reads this after each answer: every host the browser touched */
+function reportResources() {
+  try {
+    const entries = performance.getEntriesByType("resource").map(e => ({ name: e.name, size: e.transferSize }));
+    fetch("/drill/report", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entries: entries }) });
+  } catch (e) {}
+}
+</script>
+</body>
+</html>

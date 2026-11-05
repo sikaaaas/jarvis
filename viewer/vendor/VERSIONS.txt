@@ -1,0 +1,5 @@
+three.js 0.149.0
+  https://unpkg.com/three@0.149.0/build/three.min.js
+  3d-force-graph 1.73.5
+  https://unpkg.com/3d-force-graph@1.73.5/dist/3d-force-graph.min.js
+  Pinned per Prompt 06 (Bring the libraries home). The page must render with no network at all.
