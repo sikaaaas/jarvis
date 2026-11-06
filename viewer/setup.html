@@ -87,6 +87,7 @@
     <div class="btnrow">
       <button id="dTest">TEST</button>
       <button id="dSave" class="primary">SAVE &amp; ENTER THE GALAXY</button>
+      <button id="dShortcut" title="a 'Start Jarvis' launcher on your desktop - next time is a double-click, no terminal">ADD DESKTOP LAUNCHER</button>
     </div>
     <div id="dResult"></div>
   </div>
@@ -136,6 +137,10 @@ async function load() {
 
 function cost(b) {
   if (b.where === "local") return '<b>0 MB now</b> - but Ollama (~0.6-1 GB + a 5-6 GB model) must already be running on this machine.';
+  if (b.name === "gemini") return '<b>FREE tier</b> - aistudio.google.com/apikey, 0 MB to install. The key starts with <b>AIza</b>.';
+  if (b.name === "openrouter") return '<b>0 MB</b> - key starts with <b>sk-or-</b>. Some models are free, most need credits; when a model answers "credit balance too low", Jarvis borrows the Gemini brain automatically.';
+  if (b.name === "claude") return '<b>0 MB</b> - key starts with <b>sk-ant-</b> (console.anthropic.com), bills per use.';
+  if (b.name === "openai") return '<b>0 MB</b> - key starts with <b>sk-</b> (platform.openai.com), bills per use.';
   return '<b>0 MB</b> - nothing to install, just paste the key.';
 }
 
@@ -208,6 +213,19 @@ $("dSave").onclick = async () => {
     }
   } catch (e) { r.className = "bad"; r.textContent = "the server did not answer - is main.py running?"; }
   $("dSave").disabled = false;
+};
+
+$("dShortcut").onclick = async () => {
+  const b = $("dShortcut"), r = $("dResult");
+  b.disabled = true;
+  r.className = ""; r.textContent = "writing the desktop launcher\u2026";
+  try {
+    const res = await post("/desktop-shortcut", {});
+    r.className = res.ok ? "ok" : "bad";
+    r.textContent = res.ok ? "\u2713 " + (res.path || "Launcher") + " is on your desktop - double-click it next time."
+                           : (res.error || "the launcher refused to be born");
+  } catch (e) { r.className = "bad"; r.textContent = "the server did not answer - is main.py running?"; }
+  b.disabled = false;
 };
 
 load();

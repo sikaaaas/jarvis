@@ -29,19 +29,26 @@ LANGUAGE = "en"
 # upgrade costs zero installs and zero megabytes. Tried only when VoiceStudio
 # is not answering, and only if "cloud_fallback" is not false in the voice
 # config. Every request goes through net.py, so the drill sees it - honest.
-GEMINI_TTS_MODELS = ["gemini-2.5-flash-preview-tts", "gemini-2.5-pro-preview-tts"]
+# A DOWN-BREAKER guards sir's patience: when the cloud voice fails (dead key,
+# model retired, quota out), it is skipped INSTANTLY for five minutes so the
+# text never sits there waiting on a voice that cannot come - the browser
+# stand-in speaks at once, and one badge says so.
+GEMINI_TTS_MODELS = ["gemini-3.8-flash-tts", "gemini-3.8-flash-lite-tts",
+                     "gemini-2.5-flash-preview-tts"]
 GEMINI_TTS_BASE = "https://generativelanguage.googleapis.com/v1beta"
 GEMINI_VOICE_DEFAULT = "Charon"      # deep, dry, butler register
 OPENAI_TTS_MODELS = ["gpt-4o-mini-tts", "tts-1"]
 OPENAI_TTS_BASE = "https://api.openai.com/v1"
 OPENAI_VOICE_DEFAULT = "onyx"        # the deep one
+CLOUD_TTS_TIMEOUT = 20               # a voice that needs longer is not coming
+CLOUD_DOWN_SECS = 300                # after a failure, straight-to-browser for this long
 
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "wav-cache")
 IDLE_WARM_SECS = 600          # every 10 idle minutes
 
-_state = {"profile_id": None, "selected": False, "last_speak": 0.0, "healthy": False}
+_state = {"profile_id": None, "selected": False, "last_speak": 0.0, "healthy": False,
+          "cloud_down_until": 0.0}
 _lock = threading.Lock()
-
 
 def init(cfg, net_module, key_lookup=None):
     global URL, ENGINE, MODEL_ID, PROFILE_NAME, LANGUAGE, net, key_for, \
@@ -57,10 +64,8 @@ def init(cfg, net_module, key_lookup=None):
     net = net_module
     key_for = key_lookup or (lambda name: None)
 
-
 _cfg = {}
 key_for = lambda name: None   # noqa: E731 - replaced by init()
-
 
 def bootstrap():
     """Called once at boot, in a background thread: pin the engine, find the
@@ -75,7 +80,6 @@ def bootstrap():
                 pass
         time.sleep(30)
 
-
 def available():
     """The law: if /health does not answer within one second, the local voice
     is 'not home' and the server tells the viewer to use the browser voice."""
@@ -87,9 +91,7 @@ def available():
         _state["healthy"] = False
         return False
 
-
 _DIAG = {"ts": 0.0, "result": None}
-
 
 def diagnose():
     """WHY the local voice is or is not home - one plain detail string the
@@ -122,7 +124,6 @@ def diagnose():
     _DIAG["result"] = result
     return dict(result)
 
-
 def _select_engine_once():
     """POST /engines/select once per engine run, so the pinned engine is never
     silently swapped for the app's default voice pack."""
@@ -134,7 +135,6 @@ def _select_engine_once():
                 headers={"Content-Type": "application/json"},
                 timeout=10, reason="voicestudio:select-engine")
     _state["selected"] = True
-
 
 def _resolve_profile():
     if _state["profile_id"]:
@@ -150,16 +150,13 @@ def _resolve_profile():
         raise RuntimeError(f"voice profile '{PROFILE_NAME}' not found - clone it in VoiceStudio first")
     return _state["profile_id"]
 
-
 def profile_name():
     return PROFILE_NAME
-
 
 def _cache_path(text):
     os.makedirs(CACHE_DIR, exist_ok=True)
     key = hashlib.sha1(f"{text}|{PROFILE_NAME}|{LANGUAGE}|{MODEL_ID}".encode()).hexdigest()[:20]
     return os.path.join(CACHE_DIR, f"{key}.wav")
-
 
 def speak(text):
     """Returns WAV bytes for this text in the cloned voice, or None.
@@ -190,10 +187,8 @@ def speak(text):
     except Exception:
         return None
 
-
 def idle_seconds():
     return time.time() - _state["last_speak"] if _state["last_speak"] else 1e9
-
 
 # ---------------------------------------------------------------------------
 # The cloud tier: a proper deep male voice with zero installs, using an agent
@@ -211,12 +206,10 @@ def cloud_capable():
     except Exception:
         return False
 
-
 def _cloud_cache_path(text, engine_tag):
     os.makedirs(CACHE_DIR, exist_ok=True)
     key = hashlib.sha1(f"{text}|{engine_tag}|{LANGUAGE}".encode()).hexdigest()[:20]
     return os.path.join(CACHE_DIR, f"c{key}.wav")
-
 
 def _pcm_to_wav(pcm, rate):
     """Gemini returns raw 16-bit mono PCM; wrap a proper WAV header around it."""
@@ -228,7 +221,6 @@ def _pcm_to_wav(pcm, rate):
         w.setframerate(rate)
         w.writeframes(pcm)
     return buf.getvalue()
-
 
 def _gemini_tts(text, api_key):
     voice_name = str(_cfg.get("gemini_voice", GEMINI_VOICE_DEFAULT))
@@ -252,7 +244,7 @@ def _gemini_tts(text, api_key):
                 data=json.dumps(body).encode(),
                 headers={"Content-Type": "application/json",
                          "x-goog-api-key": api_key},
-                timeout=60, reason="voice:gemini-tts")
+                timeout=CLOUD_TTS_TIMEOUT, reason="voice:gemini-tts")
             if status != 200 or not raw:
                 continue
             data = json.loads(raw.decode("utf-8", "replace"))
@@ -274,7 +266,6 @@ def _gemini_tts(text, api_key):
             continue
     return None
 
-
 def _openai_tts(text, api_key):
     voice_name = str(_cfg.get("openai_voice", OPENAI_VOICE_DEFAULT))
     path = _cloud_cache_path(text, f"openai:{voice_name}")
@@ -290,7 +281,7 @@ def _openai_tts(text, api_key):
                 data=json.dumps(body).encode(),
                 headers={"Content-Type": "application/json",
                          "Authorization": f"Bearer {api_key}"},
-                timeout=60, reason="voice:openai-tts")
+                timeout=CLOUD_TTS_TIMEOUT, reason="voice:openai-tts")
             if status == 200 and raw and raw[:4] == b"RIFF":
                 with open(path, "wb") as f:
                     f.write(raw)
@@ -299,25 +290,35 @@ def _openai_tts(text, api_key):
             continue
     return None
 
-
 def speak_cloud(text):
     """The middle rung. (wav, tag) on success, None to fall through to the
-    browser stand-in. Cached on disk like the local voice."""
+    browser stand-in - INSTANTLY when the breaker is down, so the answer's
+    text never waits on a voice that has stopped coming. Cached on disk like
+    the local voice."""
     if not text or not _cfg.get("cloud_fallback", True):
         return None
+    if time.time() < _state["cloud_down_until"]:
+        return None                                     # breaker down: browser, now
+    ok = False
     try:
         gem = key_for("gemini")
         if gem:
             got = _gemini_tts(text, gem)
             if got:
                 _state["last_speak"] = time.time()
+                _state["cloud_down_until"] = 0.0
+                ok = True
                 return got
         oai = key_for("openai")
         if oai:
             got = _openai_tts(text, oai)
             if got:
                 _state["last_speak"] = time.time()
+                _state["cloud_down_until"] = 0.0
+                ok = True
                 return got
     except Exception:
-        return None
+        pass
+    if not ok:                                          # nothing answered: breaker down
+        _state["cloud_down_until"] = time.time() + CLOUD_DOWN_SECS
     return None

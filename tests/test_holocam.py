@@ -18,18 +18,15 @@ import arms  # noqa: E402
 
 BH = "http://127.0.0.1:8794"
 
-
 def _get_json(url, timeout=3):
     with urllib.request.urlopen(url, timeout=timeout) as r:
         return r.status, json.loads(r.read().decode())
-
 
 def _post_json(url, obj, timeout=4):
     req = urllib.request.Request(url, data=json.dumps(obj).encode("utf-8"),
                                  headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.status
-
 
 class TestHolocam(unittest.TestCase):
     def test_01_vendored_files(self):
@@ -95,7 +92,6 @@ class TestHolocam(unittest.TestCase):
         self.assertEqual(res.get("arm"), "holocam")
         self.assertFalse(arms.holocam_ring("thinking"))  # fails silent
         self.assertIn("holocam", arms.route("holocam status")["answer"].lower())
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

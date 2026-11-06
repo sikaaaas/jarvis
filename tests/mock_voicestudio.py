@@ -13,7 +13,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = 3900
 
-
 def tone_wav(seconds=1.2, freq=196):
     """A real, playable WAV (soft A3 hum) - starts with RIFF like the real engine."""
     buf = io.BytesIO()
@@ -25,7 +24,6 @@ def tone_wav(seconds=1.2, freq=196):
             frames += struct.pack("<h", int(12000 * env * math.sin(2 * math.pi * freq * i / 22050)))
         w.writeframes(bytes(frames))
     return buf.getvalue()
-
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
@@ -60,7 +58,6 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
-
 
 if __name__ == "__main__":
     print(f"mock VoiceStudio on http://127.0.0.1:{PORT}")

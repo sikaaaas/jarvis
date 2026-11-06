@@ -20,7 +20,6 @@ sys.path.insert(0, ROOT)
 import server  # noqa: E402
 import voice   # noqa: E402
 
-
 def _free_port():
     s = socket.socket()
     s.bind(("127.0.0.1", 0))
@@ -28,9 +27,7 @@ def _free_port():
     s.close()
     return port
 
-
 VENDOR_PORT = _free_port()
-
 
 class FakeVendor(BaseHTTPRequestHandler):
     """A cloud brain that misbehaves on demand, driven by the pasted key:
@@ -66,12 +63,10 @@ class FakeVendor(BaseHTTPRequestHandler):
             return self._send(200, {"data": [{"id": "test-flash-a"}, {"id": "test-flash-b"}]})
         return self._send(404, {"error": {"message": "no such door"}})
 
-
 def _start_vendor():
     httpd = ThreadingHTTPServer(("127.0.0.1", VENDOR_PORT), FakeVendor)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd
-
 
 class TestHonestBrain(unittest.TestCase):
     httpd = None
@@ -160,7 +155,8 @@ class TestHonestBrain(unittest.TestCase):
     def test_08_apply_setup_writes_key_never_echoes_it(self):
         path = server.CONFIG_PATH
         snap = None
-        if os.path.exists(path):
+        created = not os.path.exists(path)          # no config before: none must survive
+        if not created:
             with open(path, "rb") as f:
                 snap = f.read()
         try:
@@ -176,7 +172,12 @@ class TestHonestBrain(unittest.TestCase):
             bad = server.apply_setup("openai", "PUT-YOUR-KEY-HERE")      # placeholder refused
             self.assertFalse(bad.get("ok"))
         finally:
-            if snap is not None:
+            if created:
+                if os.path.exists(path):
+                    os.remove(path)             # the test made it; the test unmakes it
+                with open(server.TEMPLATE_PATH, encoding="utf-8") as f:
+                    server.CFG.update(json.load(f))
+            elif snap is not None:
                 with open(path, "wb") as f:
                     f.write(snap)
                 server.CFG.update(json.loads(snap.decode("utf-8")))
@@ -189,7 +190,6 @@ class TestHonestBrain(unittest.TestCase):
         self.assertIn("detail", d)
         self.assertIsInstance(d["detail"], str)
         self.assertTrue(len(d["detail"]) > 10)
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

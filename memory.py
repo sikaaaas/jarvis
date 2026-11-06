@@ -21,10 +21,8 @@ JOURNAL = os.path.join(MEM_DIR, "journal.jsonl")
 _lock = threading.Lock()
 _load_count = 0
 
-
 def _ensure():
     os.makedirs(MEM_DIR, exist_ok=True)
-
 
 def remember_exchange(question, answer, brain=""):
     """One line on disk per exchange. Never raises - memory never breaks the chat."""
@@ -37,7 +35,6 @@ def remember_exchange(question, answer, brain=""):
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception:                                  # noqa: BLE001
         pass
-
 
 def load_recent(max_exchanges=12):
     """Boot-time: rebuild the conversation memory from the journal.
@@ -54,10 +51,8 @@ def load_recent(max_exchanges=12):
     _load_count = len(entries)
     return out
 
-
 def loaded_count():
     return _load_count
-
 
 def _read_all():
     if not os.path.exists(JOURNAL):
@@ -76,7 +71,6 @@ def _read_all():
         return []
     return out
 
-
 def search(query, limit=6):
     """Case-insensitive substring search over questions and answers."""
     q = query.lower().strip()
@@ -89,7 +83,6 @@ def search(query, limit=6):
             hits.append(e)
     return hits[-limit:]
 
-
 def stats():
     entries = _read_all()
     if not entries:
@@ -98,7 +91,6 @@ def stats():
             "first": entries[0].get("iso", ""), "last": entries[-1].get("iso", ""),
             "file": os.path.relpath(JOURNAL, ROOT),
             "size_kb": round(os.path.getsize(JOURNAL) / 1024, 1)}
-
 
 def recent_spoken(n=5):
     entries = _read_all()
@@ -109,11 +101,9 @@ def recent_spoken(n=5):
     return (f"Since {entries[0].get('iso', '?')} I have kept {len(entries)} exchanges, sir. "
             f"The latest: {topics}.")
 
-
 def _short(q, n=60):
     q = re.sub(r"\s+", " ", q).strip()
     return f'"{q[:n]}..."' if len(q) > n else f'"{q}"'
-
 
 def search_spoken(query, brain_ask=None):
     hits = search(query)
@@ -131,7 +121,6 @@ def search_spoken(query, brain_ask=None):
             return text
     return (f"{len(hits)} entries in the journal mention \"{query}\", sir. "
             + " ".join(f"[{e.get('iso','')}] {_short(e.get('q',''), 50)}" for e in hits[-3:]))
-
 
 def wipe():
     """Archive the journal (never delete history outright) and start fresh."""

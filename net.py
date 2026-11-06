@@ -19,18 +19,15 @@ LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0", "[::1]"}
 
 _lock = threading.Lock()
 
-
 def _log(entry):
     os.makedirs(LOG_DIR, exist_ok=True)
     with _lock:
         with open(LOG_PATH, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
-
 def is_local(url):
     host = urllib.parse.urlparse(url).hostname or ""
     return host.lower() in LOCAL_HOSTS
-
 
 def request(url, method="GET", data=None, headers=None, timeout=10, reason="unlabeled"):
     """One logged HTTP request. Returns (status:int, body:bytes).
@@ -47,7 +44,6 @@ def request(url, method="GET", data=None, headers=None, timeout=10, reason="unla
             return resp.status, resp.read()
     except urllib.error.HTTPError as e:      # a real HTTP answer is still an answer
         return e.code, e.read()
-
 
 def new_entries_since(offset):
     """New log lines written after byte offset `offset`. Returns (entries, new_offset)."""

@@ -5,7 +5,7 @@ exactly like the voice and ear bays (soft-imported: if the file is missing the
 butler simply has no arms and still boots), and every arm reports its real
 status in the viewer's **ARMS** panel.
 
-## The nine arms
+## The ten arms
 
 | Arm | Command examples | Dependency | Where it runs |
 |---|---|---|---|
@@ -16,8 +16,34 @@ status in the viewer's **ARMS** panel.
 | `hands` | "type hello and press enter" · "press ctrl+s" · "click" · "double-click" · "scroll down" · "open spotify" · "click on the subscribe button" | `pip install pyautogui` **+ gate** | your desktop |
 | `browser` | "search for lofi on youtube" · "open the second video" · "open youtube.com" · "read the page" | `pip install playwright` + `playwright install chromium` | your desktop |
 | `scribe` | "make a report on quarterly beans" · "make a pdf about roasting" · "make a file called shopping saying milk, eggs" | `pip install reportlab` for PDFs | server (writes to `Desktop/Jarvis/`) |
+| `files` | "create a mods folder and write the main file in it" · "read my notes/todo.md" · "open my Downloads folder" — the brain answers with `[[TOOL]]` blocks and the server executes | stdlib only, always on | server (your home shelf + the Jarvis folder) |
 | `skills` | "make a skill that …" · "approve skill …" · "run skill …" · "adopt skill from <url>" | stdlib only | server sandbox |
 | `holocam` | "barehands" · "holocam" · "open the holocam" · "is barehands running" · "close the holocam" · "put that on the board" | stdlib only (vendored) | 127.0.0.1:8794 + your browser |
+
+### The files arm, precisely
+
+The brain no longer *talks about* files — it answers with tool blocks and the
+server does the deed:
+
+```
+[[TOOL: {"tool": "write_file", "args": {"path": "~/projects/mods/main.java", "content": "..."}}]]
+[[TOOL: {"tool": "read_file", "args": {"path": "~/notes/x.md"}}]]
+[[TOOL: {"tool": "list_dir", "args": {"path": "~/Downloads"}}]]
+[[TOOL: {"tool": "make_dir", "args": {"path": "~/projects"}}]]
+[[TOOL: {"tool": "open_path", "args": {"path": "~/projects"}}]]
+```
+
+The server executes each block and hands the brain the receipts (up to three
+tool rounds per answer); the viewer shows `HANDS wrote main.java (1.2 KB)`
+style badges, and every call is appended to `logs/arms.log`. The leash:
+
+- paths must land **inside your home folder** or the Jarvis folder (`~/Downloads`,
+  `%APPDATA%\...`, `~/Documents` — all in; `/etc`, `C:\Windows` — all out)
+- `config.json`, `config.template.json`, `logs/` and `.git/` are **private**:
+  the brain can never read its own keys, not even by asking
+- reads: files up to 2 MB, at most 60,000 chars sent to the brain; writes: up
+  to 1 MB per block; listings capped at 400 entries
+- no shell, no delete, no execute — exactly five verbs, all standard library
 
 ## The watcher — eyes that stay open
 
@@ -131,7 +157,6 @@ body text. Click/type/scroll/press ride the same queue. If chromium isn't
 installed, every browser command answers with the exact install line instead
 of an error.
 
-
 ## The holocam — barehands, the hand-tracked board
 
 Press the **HOLOCAM** toggle, the **RAISE THE HOLOCAM** button in the armory
@@ -181,6 +206,7 @@ intact with its `LICENSE`, README and TROUBLESHOOTING in `barehands/`.
 | Path | Purpose |
 |---|---|
 | `arms.py` | the whole armory (router, arms, seatbelt, skills) |
+| `server.py` | the brain side of the files arm: `execute_tool`, `_safe_path`, the `[[TOOL]]` parser and the tool loop |
 | `logs/arms.log` | every hand/skill/arm action, one JSON per line |
 | `skills/` | approved skills (`.py` + `.json` meta) — gitignored, yours |
 | `skills/_pending/` | drafts awaiting your approval |

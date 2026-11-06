@@ -25,18 +25,15 @@ import hear
 FIXTURES = os.path.join(ROOT, "tests", "fixtures")
 fails = []
 
-
 def load_wav(path):
     with wave.open(path, "rb") as w:
         assert w.getnchannels() == 1, "fixtures must be mono"
         return w.readframes(w.getnframes())
 
-
 def check(name, ok, detail=""):
     print(f"  [{'PASS' if ok else 'FAIL'}] {name}" + (f"  ({detail})" if detail else ""))
     if not ok:
         fails.append(name)
-
 
 def pure_logic_tests():
     """The wake-word and interrupt rules, no model required."""
@@ -55,7 +52,6 @@ def pure_logic_tests():
         check("interrupt ignores chatter", not interrupt.search("pause the roast temperatures"))
     else:
         print("  [SKIP] interrupt regex not exposed by hear.py")
-
 
 def model_tests():
     """The real transcriptions - only when the models actually load."""
@@ -88,7 +84,6 @@ def model_tests():
     print(f"  [interrupt] interrupt-stop.wav    -> {r.get('text')!r}")
     check("interrupt caught 'stop'", r.get("text") == "stop")
 
-
 def main():
     pure_logic_tests()
     print()
@@ -99,7 +94,6 @@ def main():
 
     print("\n" + ("EARS TEST PASSED" if not fails else f"EARS TEST FAILED: {fails}"))
     return 0 if not fails else 1
-
 
 if __name__ == "__main__":
     sys.exit(main())
