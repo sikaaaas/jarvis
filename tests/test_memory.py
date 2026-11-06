@@ -14,7 +14,6 @@ import memory
 PASS = 0
 FAIL = 0
 
-
 def check(name, cond, detail=""):
     global PASS, FAIL
     if cond:
@@ -24,10 +23,10 @@ def check(name, cond, detail=""):
         FAIL += 1
         print(f"  [FAIL] {name}  {detail}")
 
-
 # sandbox the journal into a temp dir for the test
 import tempfile
 tmp = tempfile.mkdtemp(prefix="jarvis-mem-test-")
+_ORIG_MEM_DIR, _ORIG_JOURNAL = memory.MEM_DIR, memory.JOURNAL
 memory.MEM_DIR = os.path.join(tmp, "memory")
 memory.JOURNAL = os.path.join(memory.MEM_DIR, "journal.jsonl")
 
@@ -64,6 +63,8 @@ check("the archive exists", len(archives) == 1)
 
 import shutil
 shutil.rmtree(tmp)
+# hand the module back the way we found it - other suites import this one
+memory.MEM_DIR, memory.JOURNAL = _ORIG_MEM_DIR, _ORIG_JOURNAL
 print()
 if FAIL:
     print(f"MEMORY TEST FAILED - {FAIL} failed, {PASS} passed")

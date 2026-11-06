@@ -1,0 +1,10 @@
+{
+  "name": "JARVIS",
+  "port": 8794,
+  "orbs": [
+    { "title": "Notes",  "path": "sample-notes", "kind": "notes" },
+    { "title": "Galaxy", "path": "../notes",     "kind": "notes" },
+    { "title": "Manual", "path": "../docs",      "kind": "notes" },
+    { "title": "Props",  "path": "media",        "kind": "media" }
+  ]
+}

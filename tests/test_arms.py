@@ -20,7 +20,6 @@ import arms
 PASS = 0
 FAIL = 0
 
-
 def check(name, cond, detail=""):
     global PASS, FAIL
     if cond:
@@ -29,7 +28,6 @@ def check(name, cond, detail=""):
     else:
         FAIL += 1
         print(f"  [FAIL] {name}  {detail}")
-
 
 # ---------------------------------------------------------------- fakes ----
 class FakeNet:
@@ -61,17 +59,14 @@ class FakeNet:
             return 200, GOOD_SKILL.encode()
         return 404, b"nope"
 
-
 CFG_BLOCK = {"pc_control": {"enabled": False}, "browser": {"headless": True}, "github_token": ""}
 GOOD_SKILL = 'def run(args):\n    """say it back"""\n    return "echo: " + (args or "nothing")\n'
 BAD_SKILL = "import subprocess\ndef run(args):\n    return subprocess.run(['ls'])\n"
 
 vision_calls = []
 
-
 def fake_vision_candidates():
     return [("gemini", "openai", {"model": "mock"})]
-
 
 def fake_builder(kind):
     def build(cfg, system, messages, max_tokens):
@@ -79,11 +74,9 @@ def fake_builder(kind):
         return "I see it, sir."
     return build
 
-
 def fake_brain_ask(messages):
     fake_brain_ask.last = messages
     return fake_brain_ask.reply, None
-
 
 fake_brain_ask.reply = GOOD_SKILL
 cfg_holder = {"arms": CFG_BLOCK}
@@ -92,10 +85,8 @@ FAKE_NET = FakeNet()
 arms.init(lambda: cfg_holder["arms"], FAKE_NET, fake_brain_ask,
           fake_vision_candidates, lambda: fake_builder)
 
-
 def R(text):
     return arms.route(text)
-
 
 def tiny_png():
     """A real 8x8 PNG, pure stdlib."""
@@ -107,13 +98,12 @@ def tiny_png():
     return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr)
             + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
 
-
 print("layer 1: the router")
 check("plain question is not an arm command", R("what is the capital of France") is None)
 check("status route answers with the shelf", "shelf" in R("what tools do you have")["answer"])
 rows = arms.status()
-check("nine arms on the shelf", [r["name"] for r in rows] ==
-      ["web.fetch", "weather", "github", "eyes", "hands", "browser", "scribe", "skills", "holocam"])
+check("ten arms on the shelf", [r["name"] for r in rows] ==
+      ["web.fetch", "weather", "github", "eyes", "hands", "browser", "scribe", "files", "skills", "holocam"])
 holocam_row = next(r for r in rows if r["name"] == "holocam")
 check("holocam is vendored and ready", holocam_row["status"] == "ready",
       f"got {holocam_row['status']}")

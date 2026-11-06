@@ -27,7 +27,6 @@ some such only same so no nor too very own one two three new now after before be
 each few other same
 """.split())
 
-
 def _stem(w):
     # light stemming so "saturdays" meets "saturday" and "opening" meets "open".
     # Applied to BOTH the index and the question, so plain intersections work.
@@ -35,7 +34,6 @@ def _stem(w):
         if len(w) > len(suf) + 2 and w.endswith(suf):
             return w[: -len(suf)]
     return w
-
 
 def tokens(text):
     out = set()
@@ -48,11 +46,9 @@ def tokens(text):
             out.add(s)
     return out
 
-
 def slugify(title):
     slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
     return slug[:60] or "note"
-
 
 def read_note(path):
     with open(path, "r", encoding="utf-8", errors="replace") as f:
@@ -63,7 +59,6 @@ def read_note(path):
     excerpt = re.sub(r"\s+", " ", body_no_h1).strip()[:EXCERPT_CHARS]
     wikilinks = [w.strip() for w in WIKILINK_RE.findall(body)]
     return body, excerpt, wikilinks
-
 
 def index_notes(notes_dir):
     """Scan every .md file. Returns {'nodes': [...], 'links': [...], 'paths': [...]}.
@@ -102,7 +97,6 @@ def index_notes(notes_dir):
     links = find_links(nodes)
     return {"nodes": nodes, "links": links, "paths": [p[1] for p in paths]}
 
-
 def find_links(nodes):
     """Link two notes when one mentions the other's title, or they share wikilinks.
     Used by build at index time AND by the server when a note is born live."""
@@ -139,14 +133,12 @@ def find_links(nodes):
 
     return links
 
-
 def strip_private(nodes, links):
     """Drop the _private scoring fields; the viewer never sees them."""
     clean = []
     for n in nodes:
         clean.append({k: v for k, v in n.items() if not k.startswith("_")})
     return clean, links
-
 
 def write_graph(indexed, out_path):
     nodes, links = strip_private(indexed["nodes"], indexed["links"])
@@ -157,7 +149,6 @@ def write_graph(indexed, out_path):
         f.write(json.dumps({"nodes": nodes, "links": links}, ensure_ascii=False))
         f.write(";\n")
     return len(nodes), len(links)
-
 
 def main(notes_dir=None, quiet=False):
     notes_dir = os.path.join(ROOT, notes_dir) if notes_dir and not os.path.isabs(notes_dir) else (notes_dir or os.path.join(ROOT, "notes"))
@@ -170,7 +161,6 @@ def main(notes_dir=None, quiet=False):
     if not quiet:
         print(f"build.py: indexed {n} notes, {l} links -> {os.path.relpath(out, ROOT)}")
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1] if len(sys.argv) > 1 else None))

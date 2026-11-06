@@ -23,23 +23,19 @@ import net
 PLACEHOLDER = "PUT-YOUR-KEY-HERE"
 fails, warns = [], []
 
-
 def _port():
     with open(os.path.join(ROOT, "config.json" if os.path.exists(os.path.join(ROOT, "config.json"))
                            else "config.template.json"), encoding="utf-8") as f:
         return json.load(f).get("port", 4700)
 
-
 PORT = _port()
 BASE = f"http://127.0.0.1:{PORT}"
-
 
 def post(path, obj):
     status, raw = net.request(BASE + path, method="POST", data=json.dumps(obj).encode(),
                               headers={"Content-Type": "application/json"}, timeout=300,
                               reason="drill:loopback")
     return status, json.loads(raw.decode("utf-8", "replace"))
-
 
 def main():
     print("=" * 62)
@@ -171,11 +167,9 @@ def main():
                   if not fails else f"DRILL FAILED: {fails}"))
     return 0 if not fails else 1
 
-
 def brain_placeholder(b):
     return (b.get("api_key", "").lower() in {"", PLACEHOLDER.lower(), "none"}
             or "change-me" in b.get("model", "").lower())
-
 
 if __name__ == "__main__":
     sys.exit(main())

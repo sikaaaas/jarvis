@@ -5,6 +5,10 @@
     "brains: the shelf. 'kind' is 'anthropic' (Claude Messages API) or 'openai' (anything that speaks",
     "  the OpenAI chat-completions shape: OpenAI/ChatGPT, Gemini's compatible endpoint, OpenRouter, Ollama, LM Studio, llama.cpp-server, vLLM).",
     "  Add or remove shelf entries freely - the control tags and the badge follow the shelf automatically.",
+    "  fallback_models: optional sibling ids tried (in order) when the main model 404s or 429s -",
+    "  free-tier rate buckets are per model, so a crowded flash model has free siblings.",
+    "  THE FALLBACK CHAIN: when the current brain fails (quota, credits, dead key), Jarvis borrows the",
+    "  next usable brain - Gemini first, then local Ollama - and says so. The answer still arrives.",
     "  Cloud brains: paste your real key over PUT-YOUR-KEY-HERE in config.json, typed in YOUR editor, never in a chat.",
     "  With the placeholder still in place, 'switch to <name>' answers one dry line and stays local. By design.",
     "voice: the local cloned voice (VoiceStudio). profile = the profile NAME you cloned in VoiceStudio.",
@@ -14,10 +18,15 @@
     "  the fully-offline law; then the browser stand-in is the only fallback.",
     "hearing: local Whisper ears. allow_browser_stt=true lets the browser's speech recognition take over",
     "  when Whisper is not installed - that one sends audio to the browser maker's cloud. Set false for the fully-offline law.",
+    "  When Whisper is absent but a Gemini key is pasted, the SERVER ears transcribe with Gemini (one request per",
+    "  utterance, free tier) - that is how the mic keeps working in Firefox/Zen, which have no built-in ears.",
+    "  gemini_model: which Gemini id listens when the Whisper weights are not home.",
     "  THE DOWNLOAD LAW: nothing big is ever fetched on boot. The browser's ears (Chrome/Edge, free, 0 MB)",
     "  are the default. Whisper weights land ONLY when you run: python hear.py download  (~2.1 GB, announced).",
     "notes_dir: where your markdown notes live. captures/ inside it is where 'remember that' notes are born.",
-    "arms: the butler's hands. web.fetch / weather / github / skills need nothing. eyes (screen vision)",
+    "arms: the butler's hands. web.fetch / weather / github / files / skills need nothing. files is the",
+    "  brain's tool blocks ([[TOOL ...]]) - read/write/list/open confined to sir's home shelf and this folder;",
+    "  config.json, logs/ and .git/ are private and can never be read by the brain. eyes (screen vision)",
     "  needs a cloud brain key (it sends the screenshot to THAT brain only). hands (type/click/scroll/open)",
     "  needs 'pip install pyautogui' AND pc_control.enabled=true - OFF by default; say 'hands on' after you flip it.",
     "  browser needs 'pip install playwright' + 'playwright install chromium'. Every action is logged in logs/arms.log."
@@ -34,6 +43,7 @@
       "kind": "openai",
       "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
       "model": "gemini-3.8-flash",
+      "fallback_models": ["gemini-3.6-flash", "gemini-3.5-flash-lite"],
       "api_key": "PUT-YOUR-KEY-HERE"
     },
     "openai": {
@@ -76,7 +86,8 @@
   "hearing": {
     "model": "large-v3-turbo",
     "wake_model": "small",
-    "allow_browser_stt": true
+    "allow_browser_stt": true,
+    "gemini_model": "gemini-3.8-flash"
   },
   "notes_dir": "notes",
   "arms": {

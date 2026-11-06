@@ -297,6 +297,7 @@
       <button class="tgl" id="tglArms" title="the tool armory: eyes, hands, browser, skills">ARMS</button>
       <button class="tgl" id="tglHolocam" title="the holocam: barehands - move cards with your hands on camera">HOLOCAM</button>
       <button class="tgl" id="tglAgent" title="choose your agent and paste its key - the first-boot screen">AGENT</button>
+      <button class="tgl" id="tglDesk" title="put a 'Start Jarvis' launcher on your desktop - next time is a double-click">DESKTOP</button>
     </div>
     <div id="voiceRow"><span class="vlbl">VO</span>
       <select id="voiceSel" title="The browser stand-in voice. The real Jarvis voice lives in VoiceStudio: install it, clone a profile named exactly 'Jarvis', keep the app open - see the AGENT screen."><option value="auto">auto</option></select>
@@ -366,7 +367,7 @@ const CHUNK_CHARS = 170;       // sentence-packed chunk target (the LOCAL voice 
 const BROWSER_CHUNK = 450;     // browser voices re-connect per utterance - keep pieces big
 const HUB_DEG = 4;             // nodes with at least this many links wear a floating label
 const MUTE = new URLSearchParams(location.search).get("mute") === "1";
-const WAKE_WORDS = /^(?:hey\s+)?jarvis[\s,.!:]*/i;
+const WAKE_WORDS = /^(?:hey\s+)?jarvis\b[\s,.!:]*/i;
 
 /* ---- dom ---- */
 const $ = (id) => document.getElementById(id);
@@ -781,6 +782,7 @@ function speak(text, opts) {
   speaking = true; speakingGate = true;
   setBusy("speak");
   let mode = (opts.forceBrowser ? "browser" : "try-local");
+  if (mode === "try-local") showBadge("composing the voice\u2026");   // synthesis takes a breath - say so
   return playChunks(chunks, mode).finally(() => {
     speaking = false; speakingGate = false;
     setBusy("idle");
@@ -806,40 +808,47 @@ function packSentences(text, target) {
   return chunks;
 }
 async function playChunks(chunks, mode) {
-  const signal = () => chunkAbort ? chunkAbort.signal : null;
   const prefetched = new Array(chunks.length).fill(null);
-  for (let i = 0; i < chunks.length; i++) {
+  if (mode !== "browser") {
+    // WARM THE PIPELINE: the first three chunks synthesize IN PARALLEL while
+    // the first one plays, so a slow vendor never leaves gaps between phrases
+    for (let w = 0; w < Math.min(chunks.length, 3); w++)
+      prefetched[w] = fetchTtsBlob(chunks[w]);
+  }
+  let i = 0;
+  for (; i < chunks.length; i++) {
     if (!speakingGate) return;
-    if (mode === "try-local") {
-      const blob = await fetchTtsBlob(chunks[i]);
-      if (blob === false) return;                       // aborted mid-fetch
-      if (blob) { prefetched[i] = blob; mode = "local"; }
-      else { mode = "browser"; lastVoice = "browser"; showBadge("VOICE browser (stand-in)", true); }
+    if (mode === "browser") break;                      // straight to the browser law
+    let blob;
+    if (i === 0 && prefetched[0]) {
+      /* THE STALL GUARD: the text is already on the glass - if the first
+         blob has not landed within 6s the voice is not coming, so the rest
+         goes out in the browser voice AT ONCE. The slow fetch still finishes
+         in the background and lands in the cache for next time. */
+      blob = await Promise.race([prefetched[0], new Promise(r => setTimeout(() => r("stalled"), 6000))]);
+      if (blob === "stalled") blob = null;
+    } else {
+      blob = prefetched[i] ? await prefetched[i] : await fetchTtsBlob(chunks[i]);
     }
-    if (mode === "local") {
-      let blob = prefetched[i];
-      if (!blob) {
-        blob = await fetchTtsBlob(chunks[i]);
-        if (blob === false) return;
-        if (!blob) { mode = "browser"; lastVoice = "browser"; showBadge("VOICE browser (stand-in)", true); }
-      }
-      // fetch chunk i+1 while chunk i plays, so playback never gaps
-      if (mode === "local" && i + 1 < chunks.length && !prefetched[i + 1]) {
-        prefetched[i + 1] = fetchTtsBlob(chunks[i + 1]);   // a promise, in flight during playback
-      }
-      if (mode === "local") {
-        const url = URL.createObjectURL(blob);
-        await playAudio(url);
-        URL.revokeObjectURL(url);
-        continue;
-      }
+    if (blob === false) return;                         // aborted mid-fetch
+    if (!blob) {                                        // engine not home -> the rest in one browser pass
+      mode = "browser"; lastVoice = "browser";
+      showBadge("VOICE browser (stand-in)", true);
+      break;
     }
+    // refill the slot this chunk just vacated - three ahead at all times
+    const next = i + 3;
+    if (next < chunks.length && !prefetched[next]) prefetched[next] = fetchTtsBlob(chunks[next]);
+    const url = URL.createObjectURL(blob);
+    await playAudio(url);
+    URL.revokeObjectURL(url);
+  }
+  if (mode === "browser" && speakingGate) {
     /* THE BROWSER LAW: the web voices open a new connection for EVERY
        utterance, so small chunks mean a pause between every phrase - the
        \u201ctwo words, stop, two words\u201d bug. The rest of the answer goes out in
        ONE pass, sentence-packed under the hood, queued in a single breath. */
     await playBrowserVoice(chunks.slice(i).join(" "));
-    return;
   }
 }
 async function fetchTtsBlob(text) {
@@ -1017,9 +1026,15 @@ async function handleUtterance(wavBuffer) {
   try {
     const res = await fetch("/hear?mode=" + mode, { method: "POST", body: wavBuffer,
       headers: { "Content-Type": "audio/wav" } });
-    if (res.status === 501) {                                   // Whisper missing
-      setStatus("switching to the browser ears - say that again, sir.");
-      startBrowserEars();
+    if (res.status === 501 || res.status === 503) {              // no server ears right now
+      const err = await res.json().catch(() => ({}));
+      if (window.webkitSpeechRecognition) {
+        setStatus("switching to the browser ears - say that again, sir. " +
+                  ((err.error || "").slice(0, 140)));
+        startBrowserEars();
+      } else {
+        setStatus((err.error || "the server ears are not ready - check the AGENT screen").slice(0, 240));
+      }
       return;
     }
     const data = await res.json();
@@ -1058,8 +1073,13 @@ function bufferTranscript(text) {
 function startBrowserEars(detail) {
   earMode = "browser";
   if (!window.webkitSpeechRecognition) {
-    setStatus("no ears available: use Chrome or Edge for the browser ears (0 MB, free), " +
-              "or install the offline Whisper ears (see README, 'The ears'). Typing still works.");
+    const ua = navigator.userAgent;
+    const browser = /zen/i.test(ua) ? "Zen"
+                  : /firefox/i.test(ua) ? "Firefox"
+                  : (/safari/i.test(ua) && !/chrome|edg/i.test(ua)) ? "Safari" : "This browser";
+    setStatus("<b>" + browser + " has no built-in ears.</b> Two fixes, sir: press <b>AGENT</b> and paste a free " +
+              "Gemini key (aistudio.google.com) - then press MIC and I hear through the server, in any browser. " +
+              "Or open me in <b>Chrome or Edge</b> (0 MB, free). Typing still works.");
     return;
   }
   if (recognition) {                                            // already cast - just listen
@@ -1091,7 +1111,21 @@ function startBrowserEars(detail) {
     }
     else if (interim) setStatus("listening&hellip; <i>" + interim.slice(-40) + "</i>");
   };
-  recognition.onerror = () => {};
+  recognition.onerror = (ev) => {
+    // silence is normal; everything else gets an honest, actionable line
+    const why = ev && ev.error;
+    if (!why || why === "no-speech" || why === "aborted") return;
+    if (why === "not-allowed" || why === "service-not-allowed")
+      setStatus("ears blocked: the microphone permission was denied. Click the padlock (or the camera icon) " +
+                "in the address bar, set Microphone to <b>Allow</b>, then press MIC again.");
+    else if (why === "audio-capture")
+      setStatus("ears blocked: no microphone was found on this machine. Typing still works.");
+    else if (why === "network")
+      setStatus("ears blocked: the browser's ears need the internet (they are the browser maker's own servers). " +
+                "Typing still works - or install the offline ears: python hear.py download.");
+    else
+      setStatus("ears stumbled (" + why + ") - listening again\u2026");
+  };
   recognition.onend = () => { if (browserEarsOn) { try { recognition.start(); } catch (e) {} } };
   try { recognition.start(); } catch (e) {}
   lastVoice = lastVoice || "browser";
@@ -1118,6 +1152,11 @@ async function dispatch(text) {
       headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: t }) });
     const data = await res.json();
     if (data.badge) showBadge("BRAIN " + data.brain);
+    if (data.fallback) showBadge("BRAIN " + data.fallback + " borrowed - the usual brain stumbled", true);
+    if (data.tools && data.tools.length) {
+      const line = data.tools.map(t => (t.ok ? "\u2713 " : "\u00D7 ") + t.detail).join(" \u00B7 ");
+      showBadge("HANDS " + line, !data.tools.every(t => t.ok));
+    }
     if (data.route === "arms" && data.arm) showBadge("ARMS " + data.arm.toUpperCase());
     if (data.route === "memory") showBadge("MEMORY");
     if (data.brain !== lastBrain) { lastBrain = data.brain; if (!data.badge) showBadge("BRAIN " + data.brain); }
@@ -1343,10 +1382,17 @@ async function boot() {
     lastBrain = h.brain;
     lastVoice = h.voice === "local" ? "local:Jarvis" : (h.voice === "cloud" ? "cloud:Jarvis" : "browser");
     setStatus("Jarvis is awake. " + (MUTE ? "This tab is muted (?mute=1)." : "Say hello, sir."));
-    /* THE EARS DECIDE AT BOOT: whisper on the server, or the browser's own
-       ears wake NOW - the mic never sits dead waiting for a failed round-trip */
+    /* THE EARS DECIDE AT BOOT: Whisper on the server; else the browser's own
+       ears (Chrome/Edge/Safari) wake NOW; Firefox/Zen get the server's Gemini
+       ears when a key is pasted - the mic never sits dead in any browser */
     if (h.ears === "whisper") { earMode = "server"; }
-    else { startBrowserEars(h.ears_detail); }
+    else if (window.webkitSpeechRecognition) { startBrowserEars(h.ears_detail); }
+    else if (h.ears === "gemini") {
+      earMode = "server"; startMic();
+      showBadge("EARS server (Gemini) - the mic now works in this browser too"
+                + (h.ears_detail ? " \u00B7 " + h.ears_detail.slice(0, 140) : ""), Boolean(h.ears_detail));
+    }
+    else { startBrowserEars(h.ears_detail); }   // the honest no-ears message
     if (h.voice === "cloud") showBadge("VOICE cloud tier (the agent key speaks)");
     else if (h.voice === "browser" && h.voice_detail && h.voice_detail.detail) {
       showBadge("VOICE browser stand-in \u00B7 " + h.voice_detail.detail.slice(0, 90), true);
@@ -1385,6 +1431,21 @@ $("voiceSel").onchange = () => {
 /* the AGENT chip: the first-boot screen, any time - pick a brain, paste a key,
    and config.json is written by the server, never by hand. */
 $("tglAgent").onclick = () => { location.href = "/setup.html"; };
+
+/* the desktop launcher: one POST, the server writes Jarvis.lnk (Windows) /
+   Jarvis.command (Mac) / jarvis.desktop (Linux) on the real desktop */
+$("tglDesk").onclick = async () => {
+  const b = $("tglDesk");
+  b.disabled = true;
+  showBadge("writing the desktop launcher\u2026");
+  try {
+    const res = await fetch("/desktop-shortcut", { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: "{}" }).then(r => r.json());
+    if (res.ok) showBadge("\u2713 " + (res.path || "Launcher") + " is on your desktop");
+    else showBadge("launcher refused: " + (res.error || "unknown").slice(0, 120), true);
+  } catch (e) { showBadge("the server did not answer", true); }
+  b.disabled = false;
+};
 
 /* the drill reads this after each answer: every host the browser touched */
 function reportResources() {

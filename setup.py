@@ -20,10 +20,8 @@ PINNED = [
     ("3d-force-graph.min.js", "https://unpkg.com/3d-force-graph@1.73.5/dist/3d-force-graph.min.js", 1252161),
 ]
 
-
 def step(title):
     print(f"\n--- {title} " + "-" * max(0, 52 - len(title)))
-
 
 def check_python():
     step("Python")
@@ -31,7 +29,6 @@ def check_python():
     ok = v >= (3, 9)
     print(f"Python {v.major}.{v.minor}.{v.micro} {'OK' if ok else 'TOO OLD - install 3.9 or newer'}")
     return ok
-
 
 def check_config():
     step("config.json")
@@ -45,7 +42,6 @@ def check_config():
     print("Cloud brains: open config.json and paste your key(s) over PUT-YOUR-KEY-HERE,")
     print("in YOUR editor. Never in a chat. Local brains work with no key at all.")
     return True
-
 
 def check_notes(args):
     step("Notes")
@@ -61,7 +57,6 @@ def check_notes(args):
     count = sum(1 for r, _d, fs in os.walk(notes) for f in fs if f.endswith(".md"))
     print(f"{count} markdown notes found in ./notes - point config notes_dir elsewhere to use your own.")
     return True
-
 
 def check_vendor(args):
     step("Viewer libraries (vendored, no CDN)")
@@ -83,7 +78,6 @@ def check_vendor(args):
     print("vendored: " + ", ".join(f"{fn} ({sz // 1024} KB)" for fn, sz in sizes if os.path.exists(os.path.join(VENDOR, fn))))
     return True
 
-
 def build_index():
     step("Indexing your notes")
     import build
@@ -94,7 +88,6 @@ def build_index():
     n, l = build.write_graph(build.index_notes(notes), os.path.join(ROOT, "viewer", "graph-data.js"))
     print(f"indexed {n} notes, {l} links -> viewer/graph-data.js")
     return True
-
 
 def diagnose():
     step("The three engines (all optional - see README for each)")
@@ -136,11 +129,9 @@ def diagnose():
     else:
         print("Online mode: no cloud keys set yet (optional). Local mode needs no key.")
 
-
 def subprocess_call(cmd):
     import subprocess
     return subprocess.call(cmd) == 0
-
 
 def main():
     args = sys.argv[1:]
@@ -156,7 +147,6 @@ def main():
     print("\nStart Jarvis with:  python main.py    (or double-click start.bat)")
     print("Then open  http://127.0.0.1:4700  - add  ?mute=1  for silent test tabs.")
     return 0 if ok else 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

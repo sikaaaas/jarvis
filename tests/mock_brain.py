@@ -11,7 +11,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = 11500
 
-
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
@@ -101,7 +100,6 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
-
 
 if __name__ == "__main__":
     print(f"mock brain (OpenAI-compatible) on http://127.0.0.1:{PORT}/v1")

@@ -21,13 +21,11 @@ import net
 PLACEHOLDER = "PUT-YOUR-KEY-HERE"
 results = []
 
-
 def record(name, ok, note="", warn=False):
     state = "pass" if ok else ("warn" if warn else "fail")
     results.append(state)
     mark = state.upper()
     print(f"[{mark}] {name}" + (f" - {note}" if note else ""))
-
 
 def _port_cfg():
     p = os.path.join(ROOT, "config.json" if os.path.exists(os.path.join(ROOT, "config.json"))
@@ -35,16 +33,13 @@ def _port_cfg():
     with open(p, encoding="utf-8") as f:
         return json.load(f)
 
-
 cfg = _port_cfg()
 PORT = cfg.get("port", 4700)
 BASE = f"http://127.0.0.1:{PORT}"
 
-
 def get(path, timeout=10):
     status, raw = net.request(BASE + path, timeout=timeout, reason="preflight:loopback")
     return status, raw
-
 
 def main():
     print("=" * 62)
@@ -242,13 +237,11 @@ def main():
 
     return summary()
 
-
 def summary():
     p, w, f = results.count("pass"), results.count("warn"), results.count("fail")
     print(f"\n{p} pass, {f} fail, {w} warn")
     print("Done means preflight passed.")
     return 0 if f == 0 else 1
-
 
 if __name__ == "__main__":
     sys.exit(main())

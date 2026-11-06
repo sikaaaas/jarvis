@@ -63,13 +63,11 @@ STATE = {"hands_unlocked": False,   # momentary stop: "hands off" until "hands o
 
 _last_answer = ""        # the previous reply, for "put that on the board"
 
-
 def set_last_answer(text):
     """server._post_chat calls this after every reply, so 'put that on the
     board' always has something concrete to put on the glass."""
     global _last_answer
     _last_answer = str(text or "")[:1500]
-
 
 def init(cfg_getter, net_module, brain_ask, vision_candidates, builder_getter):
     global net, _brain_ask, _vision_candidates, _arms_cfg, _builder_getter
@@ -81,22 +79,18 @@ def init(cfg_getter, net_module, brain_ask, vision_candidates, builder_getter):
     os.makedirs(PENDING_DIR, exist_ok=True)
     os.makedirs(SKILL_DATA_DIR, exist_ok=True)
 
-
 def _log(action, detail=""):
     os.makedirs(os.path.dirname(ARMS_LOG), exist_ok=True)
     with open(ARMS_LOG, "a", encoding="utf-8") as f:
         f.write(json.dumps({"ts": round(time.time(), 3), "action": action,
                             "detail": detail[:300]}, ensure_ascii=False) + "\n")
 
-
 def _cfg():
     """The arms block of config.json, with sane defaults."""
     return (_arms_cfg() or {})
 
-
 def pc_enabled():
     return bool(_cfg().get("pc_control", {}).get("enabled")) and STATE["hands_unlocked"]
-
 
 # ---------------------------------------------------------------------------
 # Status - what the armory panel and "what tools do you have" both show
@@ -107,7 +101,6 @@ def _dep_ok(module):
         return True
     except Exception:                          # noqa: BLE001
         return False
-
 
 def status():
     arms_cfg = _cfg()
@@ -140,6 +133,8 @@ def status():
         {"name": "scribe", "desc": "files, PDFs and reports written to your desktop",
          "status": "ready" if _dep_ok("reportlab") else "ready (md only)",
          "how": "" if _dep_ok("reportlab") else "pip install reportlab for PDFs"},
+        {"name": "files", "desc": "read, write, list and open files on sir's shelves - the brain's tool blocks (stdlib, always on)",
+         "status": "ready", "how": ""},
         {"name": "skills", "desc": "forge, approve and run small python skills",
          "status": "ready", "how": ""},
         {"name": "holocam", "desc": "barehands: move cards with your bare hands on camera (localhost:8794)",
@@ -150,7 +145,6 @@ def status():
     ]
     return rows
 
-
 def summary_spoken():
     ready = [r["name"] for r in status() if r["status"] == "ready"]
     gated = [r["name"] for r in status() if r["status"] in ("gated", "needs install", "needs key")]
@@ -158,7 +152,6 @@ def summary_spoken():
     if gated:
         line += " Not yet armed: " + ", ".join(gated) + " - the armory panel shows what each one needs."
     return line
-
 
 # ---------------------------------------------------------------------------
 # THE ROUTER - server.handle_routes calls this after the voice routes.
@@ -172,7 +165,6 @@ def route(text):
         return {"answer": f"The armory jammed, sir - {type(e).__name__}: {e}. "
                           f"Everything else still works.", "nodes": [], "on_topic": False,
                 "route": "arms", "arm": "error"}
-
 
 def _route(t):
     low = t.lower()
@@ -283,7 +275,6 @@ def _route(t):
         return run_skill(m.group(1), (m.group(2) or "").strip())
     return None
 
-
 # ---------------------------------------------------------------------------
 # web.fetch - read a page's text. stdlib only.
 # ---------------------------------------------------------------------------
@@ -301,7 +292,6 @@ def web_fetch(url):
                       else f"I fetched {url}, sir, but it is all markup and no words.",
             "nodes": [], "on_topic": False, "route": "arms", "arm": "web.fetch", "url": url}
 
-
 def _html_text(html):
     html = re.sub(r"(?is)<(script|style|noscript).*?</\1>", " ", html)
     html = re.sub(r"(?s)<[^>]+>", " ", html)
@@ -310,7 +300,6 @@ def _html_text(html):
     html = re.sub(r"&lt;|&#60;", "<", html)
     html = re.sub(r"&gt;|&#62;", ">", html)
     return re.sub(r"\s+", " ", html).strip()
-
 
 # ---------------------------------------------------------------------------
 # weather - open-meteo, free, keyless. Geocoding by the same service.
@@ -342,13 +331,11 @@ def weather(city):
                        f"wind {cur.get('wind_speed_10m')} km/h."),
             "nodes": [], "on_topic": False, "route": "arms", "arm": "weather"}
 
-
 WEATHER_CODES = {0: "clear", 1: "mostly clear", 2: "partly cloudy", 3: "overcast", 45: "fog",
                  48: "rime fog", 51: "light drizzle", 53: "drizzle", 55: "heavy drizzle",
                  61: "light rain", 63: "rain", 65: "heavy rain", 71: "light snow", 73: "snow",
                  75: "heavy snow", 80: "rain showers", 81: "heavy showers", 82: "violent showers",
                  95: "a thunderstorm", 96: "a thunderstorm with hail", 99: "a violent thunderstorm"}
-
 
 # ---------------------------------------------------------------------------
 # github - read a repo / its issues. Your PAT is optional (rate limits only).
@@ -385,7 +372,6 @@ def github(kind, owner, repo):
     return {"answer": f"Top open issues on {owner}/{repo}, sir: {lines}.",
             "nodes": [], "on_topic": False, "route": "arms", "arm": "github"}
 
-
 # ---------------------------------------------------------------------------
 # eyes - screenshot -> the vision brain you chose
 # ---------------------------------------------------------------------------
@@ -412,7 +398,6 @@ def _grab_screenshot():
     return None, ("No screen reached me, sir. Install the capture eye with "
                   "'pip install mss pillow' and try again.")
 
-
 def _shrink(img):
     """Downscale to 1280 wide and encode JPEG - kind to upload limits."""
     from PIL import Image
@@ -424,12 +409,10 @@ def _shrink(img):
     img.save(buf, "JPEG", quality=72)
     return buf.getvalue(), "image/jpeg"
 
-
 VISION_SYSTEM = ("You are Jarvis, a dry, impeccably polite British butler with a razor wit. "
                  "You are being shown a screenshot of your employer's screen. "
                  "Answer in one or two sentences, address them as 'sir' once, and describe "
                  "what you see or answer the question about it. If the screen is unreadable, say so.")
-
 
 def _vision_request(system, messages, max_tokens=1200):
     """One vision turn through the candidate brains, best-first.
@@ -444,7 +427,6 @@ def _vision_request(system, messages, max_tokens=1200):
             last_err = e
     return None, None, last_err
 
-
 def _vision_message(question, img_bytes, media, kind):
     """Wrap an image + question in the right shape for the brain kind."""
     b64 = base64.b64encode(img_bytes).decode()
@@ -455,7 +437,6 @@ def _vision_message(question, img_bytes, media, kind):
     return [{"role": "user", "content": [
         {"type": "text", "text": question},
         {"type": "image_url", "image_url": {"url": f"data:{media};base64,{b64}"}}]}]
-
 
 def eyes(question):
     png, media = _grab_screenshot()
@@ -481,7 +462,6 @@ def eyes(question):
                        f"The screenshot never left your machine."),
             "nodes": [], "on_topic": False, "route": "arms", "arm": "eyes"}
 
-
 # ---------------------------------------------------------------------------
 # hands - pyautogui, gated by config + "hands on"
 # ---------------------------------------------------------------------------
@@ -503,7 +483,6 @@ def _hands_guard(arm):
                 "nodes": [], "on_topic": False, "route": "arms", "arm": arm}
     return None
 
-
 def hands_type(text):
     guard = _hands_guard("hands")
     if guard:
@@ -520,7 +499,6 @@ def hands_type(text):
     return {"answer": f"Typed, sir{' and pressed enter' if press_enter else ''}.",
             "nodes": [], "on_topic": False, "route": "arms", "arm": "hands"}
 
-
 def hands_press(key):
     guard = _hands_guard("hands")
     if guard:
@@ -534,7 +512,6 @@ def hands_press(key):
     return {"answer": f"Pressed {key}, sir.", "nodes": [], "on_topic": False,
             "route": "arms", "arm": "hands"}
 
-
 def hands_click(double, button):
     guard = _hands_guard("hands")
     if guard:
@@ -544,7 +521,6 @@ def hands_click(double, button):
     _log("hands.click", f"{'double ' if double else ''}{button}")
     return {"answer": f"{'Double-clicked' if double else 'Clicked'}, sir.", "nodes": [],
             "on_topic": False, "route": "arms", "arm": "hands"}
-
 
 def hands_scroll(direction, amount):
     guard = _hands_guard("hands")
@@ -556,14 +532,32 @@ def hands_scroll(direction, amount):
     return {"answer": f"Scrolled {direction}, sir.", "nodes": [], "on_topic": False,
             "route": "arms", "arm": "hands"}
 
-
 def open_target(target):
-    """'open youtube.com' -> browser; 'open spotify' -> the OS launcher."""
+    """'open youtube.com' -> browser; an existing file or folder -> opened by
+    the OS in one step (no pyautogui needed); otherwise 'open spotify' ->
+    the gated hands, which is an app launch."""
     if re.match(r"^(https?://|[\w-]+\.[a-z]{2,})(/\S*)?$", target, re.I) and " " not in target:
         url = target if target.startswith("http") else "https://" + target
         return browser_open(url)
+    cand = os.path.expanduser(str(target).strip().strip('"').strip("'"))
+    if not os.path.isabs(cand):
+        cand = os.path.join(os.path.expanduser("~"), cand)
+    if os.path.exists(cand):
+        try:
+            if os.name == "nt":
+                os.startfile(cand)                  # noqa: S606 - sir asked, by name
+            elif os.uname().sysname == "Darwin":
+                subprocess.Popen(["open", cand])    # noqa: S606
+            else:
+                subprocess.Popen(["xdg-open", cand],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:                      # noqa: BLE001
+            return {"answer": f"'{cand}' would not open, sir - {e}.", "nodes": [],
+                    "on_topic": False, "route": "arms", "arm": "hands"}
+        _log("open.path", cand)
+        return {"answer": f"Opening {os.path.basename(cand) or cand}, sir.", "nodes": [],
+                "on_topic": False, "route": "arms", "arm": "hands"}
     return hands_open_app(target)
-
 
 def hands_open_app(target):
     guard = _hands_guard("hands")
@@ -583,14 +577,12 @@ def hands_open_app(target):
     return {"answer": f"Opening {target}, sir.", "nodes": [], "on_topic": False,
             "route": "arms", "arm": "hands"}
 
-
 # ---------------------------------------------------------------------------
 # browser - one persistent playwright page, driven from ONE worker thread
 # (the sync API refuses to be poked from several threads; a queue keeps it law-abiding)
 # ---------------------------------------------------------------------------
 _browser = {"q": None, "err": None, "started": False}
 _browser_lock = threading.Lock()
-
 
 def _browser_worker(cfg):
     q = queue.Queue()
@@ -650,7 +642,6 @@ def _browser_worker(cfg):
             out["err"] = _browser["err"]
             out["done"] = True
 
-
 def _browser_ask(action, arg=None, timeout=45):
     with _browser_lock:
         if not _browser["started"]:
@@ -672,7 +663,6 @@ def _browser_ask(action, arg=None, timeout=45):
         return None, out["err"], ""
     return out, None, None
 
-
 def browser_open(url):
     if not re.match(r"^https?://", url):
         url = "https://" + url
@@ -685,7 +675,6 @@ def browser_open(url):
     return {"answer": f"Open, sir: {url}", "nodes": [], "on_topic": False,
             "route": "arms", "arm": "browser", "url": url}
 
-
 def browser_read():
     out, err, _ = _browser_ask("read")
     if err:
@@ -695,7 +684,6 @@ def browser_read():
     return {"answer": f"The page says: \"{text[:500]}{'...' if len(text) > 500 else ''}\"",
             "nodes": [], "on_topic": False, "route": "arms", "arm": "browser"}
 
-
 # ---------------------------------------------------------------------------
 # skills - the butler learns. Draft -> YOUR approval -> armed.
 # ---------------------------------------------------------------------------
@@ -703,7 +691,6 @@ FORBIDDEN_IMPORTS = {"subprocess", "socket", "shutil", "ctypes", "pickle",
                      "http.server", "socketserver", "multiprocessing", "signal"}
 FORBIDDEN_CALLS = {"system", "popen", "remove", "unlink", "rmdir", "rmtree",
                    "kill", "terminate", "eval", "exec", "compile", "__import__"}
-
 
 def _validate_skill(src):
     """Compile + AST seatbelt. Returns (ok, reason). A seatbelt, not a sandbox:
@@ -733,7 +720,6 @@ def _validate_skill(src):
         return False, "skills may not read config.json"
     return True, ""
 
-
 SKILL_CONTRACT = """Write ONE small python file implementing a Jarvis skill.
 
 Contract, non-negotiable:
@@ -746,7 +732,6 @@ Contract, non-negotiable:
 The skill should: {desc}
 
 Output ONLY the python source. No markdown fences, no commentary."""
-
 
 def forge(description):
     if not _brain_ask:
@@ -778,7 +763,6 @@ def forge(description):
                        f"armory panel, or say 'approve skill {name}'. Nothing runs until you do."),
             "nodes": [], "on_topic": False, "route": "arms", "arm": "skills", "skill": name}
 
-
 def adopt(url):
     """Fetch a skill's source from a raw URL the USER chose, same inspection as forge."""
     s, raw = net.request(url, timeout=15, reason="arm:skills:adopt")
@@ -803,12 +787,10 @@ def adopt(url):
                        f"approval in the armory panel. Nothing runs until you approve."),
             "nodes": [], "on_topic": False, "route": "arms", "arm": "skills", "skill": name}
 
-
 def _skill_path(name, pending):
     base = PENDING_DIR if pending else SKILLS_DIR
     p = os.path.join(base, name + ".py")
     return p if os.path.isfile(p) else None
-
 
 def approve(name):
     src = _skill_path(name, pending=True)
@@ -829,7 +811,6 @@ def approve(name):
                        f"what you want. Remember: it runs with your rights - you approved it."),
             "nodes": [], "on_topic": False, "route": "arms", "arm": "skills"}
 
-
 def reject(name):
     src = _skill_path(name, pending=True)
     if not src:
@@ -842,7 +823,6 @@ def reject(name):
     _log("skill.reject", name)
     return {"answer": f"'{name}' is struck from the shelf, sir.", "nodes": [],
             "on_topic": False, "route": "arms", "arm": "skills"}
-
 
 def run_skill(name, args):
     path = _skill_path(name, pending=False)
@@ -873,7 +853,6 @@ def run_skill(name, args):
     return {"answer": out.get("text", f"'{name}' ran and said nothing, sir."), "nodes": [],
             "on_topic": False, "route": "arms", "arm": "skills"}
 
-
 def skills_listing():
     def _dir(base):
         out = []
@@ -893,7 +872,6 @@ def skills_listing():
         return out
     return {"armed": _dir(SKILLS_DIR), "pending": _dir(PENDING_DIR)}
 
-
 def skills_spoken():
     lst = skills_listing()
     armed = [s["name"] for s in lst["armed"]]
@@ -904,7 +882,6 @@ def skills_spoken():
         line += f" Awaiting your approval: {', '.join(pending)}."
     return line
 
-
 # ---------------------------------------------------------------------------
 # scribe - files, PDFs and reports, written where you can find them
 # ---------------------------------------------------------------------------
@@ -914,7 +891,6 @@ REPORT_SYSTEM = ("You are Jarvis, a dry, impeccably polite British butler. Write
                  "'## Bottom line'. Facts only; if you must estimate, mark it as an estimate. "
                  "No preamble, no sign-off - output the markdown only.")
 
-
 def _desk_dir():
     """Desktop/Jarvis on the user's machine; output/ as the honest fallback."""
     base = os.path.join(os.path.expanduser("~"), "Desktop", "Jarvis")
@@ -922,7 +898,6 @@ def _desk_dir():
         base = os.path.join(ROOT, "output")
     os.makedirs(base, exist_ok=True)
     return base
-
 
 def _md_to_pdf(md_text, pdf_path):
     """A clean, plain PDF from the markdown the brain wrote. Latin script."""
@@ -965,7 +940,6 @@ def _md_to_pdf(md_text, pdf_path):
                             leftMargin=2 * cm, rightMargin=2 * cm)
     doc.build(story)
 
-
 def make_report(topic, kind="report"):
     """Draft with the current brain, save .md, and render a PDF when reportlab exists."""
     if not _cfg().get("pc_control", {}).get("enabled"):
@@ -1002,7 +976,6 @@ def make_report(topic, kind="report"):
     return {"answer": " ".join(lines), "nodes": [], "on_topic": False,
             "route": "arms", "arm": "scribe", "file": md_path}
 
-
 def make_file(name, content):
     if not _cfg().get("pc_control", {}).get("enabled"):
         return {"answer": ("Writing to your desktop is a hands job, sir - pc_control.enabled "
@@ -1021,7 +994,6 @@ def make_file(name, content):
     return {"answer": f"Written to {path}, sir.", "nodes": [], "on_topic": False,
             "route": "arms", "arm": "scribe", "file": path}
 
-
 # ---------------------------------------------------------------------------
 # the watcher - eyes that stay open. Change-detected frames, rolling memory.
 # ---------------------------------------------------------------------------
@@ -1030,20 +1002,17 @@ WATCHER = {"on": False, "frames": None, "last_sig": None, "started": 0,
 WATCH_MIN_INTERVAL = 5          # seconds between glances, floor; tests patch this
 _watch_lock = threading.Lock()
 
-
 def _frame_sig(png_bytes):
     """A coarse grayscale signature of a frame - equal signatures mean 'nothing moved'."""
     from PIL import Image
     img = Image.open(io.BytesIO(png_bytes)).convert("L").resize((32, 18))
     return list(img.getdata())
 
-
 def _frames_differ(a, b, tol=10):
     if a is None or b is None or len(a) != len(b):
         return True
     drift = sum(abs(x - y) for x, y in zip(a, b)) / len(a)
     return drift > tol
-
 
 def _watch_loop():
     while WATCHER["on"]:
@@ -1073,7 +1042,6 @@ def _watch_loop():
             WATCHER["on"] = False
             break
 
-
 def watch_start():
     if WATCHER["on"]:
         return {"answer": "My eyes are already open, sir - I have been watching since I was asked.",
@@ -1096,7 +1064,6 @@ def watch_start():
                        f"whenever you like - or say 'stop watching'."),
             "nodes": [], "on_topic": False, "route": "arms", "arm": "eyes"}
 
-
 def watch_stop():
     if not WATCHER["on"]:
         return {"answer": "My eyes were already closed, sir.", "nodes": [], "on_topic": False,
@@ -1106,7 +1073,6 @@ def watch_stop():
     _log("eyes.watch", "stopped")
     return {"answer": f"Eyes closed, sir. I took {n} changing screen{'s' if n != 1 else ''} into the journal.",
             "nodes": [], "on_topic": False, "route": "arms", "arm": "eyes"}
-
 
 def watch_report():
     frames = WATCHER["frames"] or []
@@ -1129,7 +1095,6 @@ def watch_report():
     return {"answer": f"While watching, sir, I noted: {summary}", "nodes": [], "on_topic": False,
             "route": "arms", "arm": "eyes"}
 
-
 # ---------------------------------------------------------------------------
 # the pointing finger - "click on the subscribe button": see, aim, click
 # ---------------------------------------------------------------------------
@@ -1142,7 +1107,6 @@ def _parse_point(text):
     if not m:
         return None
     return {"x": int(m.group(1)), "y": int(m.group(2))}
-
 
 def point_click(target):
     guard = _hands_guard("hands")
@@ -1180,7 +1144,6 @@ def point_click(target):
     return {"answer": f"Clicked '{target}', sir - I aimed at pixel {x}, {y}.",
             "nodes": [], "on_topic": False, "route": "arms", "arm": "hands"}
 
-
 # ---------------------------------------------------------------------------
 # browser recipes - "search X on youtube", "open the second video"
 # ---------------------------------------------------------------------------
@@ -1197,14 +1160,12 @@ ORDINALS = {"first": 1, "one": 1, "1st": 1, "second": 2, "two": 2, "2nd": 2,
             "fifth": 5, "5th": 5, "sixth": 6, "6th": 6, "seventh": 7, "7th": 7}
 LAST_SEARCH = {"site": "youtube"}
 
-
 def _ordinal(word):
     w = word.lower().strip(".")
     if w in ORDINALS:
         return ORDINALS[w]
     m = re.fullmatch(r"(\d+)(?:st|nd|rd|th)?", w)
     return int(m.group(1)) if m else None
-
 
 def browser_search_site(site, query):
     rec = RECIPES[site]
@@ -1223,7 +1184,6 @@ def browser_search_site(site, query):
                        f"Say 'open the second video' or 'open the third result' and I shall click it."),
             "nodes": [], "on_topic": False, "route": "arms", "arm": "browser"}
 
-
 def browser_open_result(word):
     n = _ordinal(word)
     if not n:
@@ -1240,7 +1200,6 @@ def browser_open_result(word):
     return {"answer": f"Opened {site} result {n}, sir - \"{what}\".", "nodes": [],
             "on_topic": False, "route": "arms", "arm": "browser"}
 
-
 # ---------------------------------------------------------------------------
 # THE HOLOCAM - barehands, vendored intact under ./barehands (AGPL-3.0).
 # "Move things on your screen with your bare hands." The butler boots its
@@ -1252,7 +1211,6 @@ def browser_open_result(word):
 BH_DIR = os.path.join(ROOT, "barehands")
 _holocam = {"proc": None, "log": None}
 
-
 def _holocam_port():
     try:
         with open(os.path.join(BH_DIR, "barehands.json"), encoding="utf-8") as f:
@@ -1260,10 +1218,8 @@ def _holocam_port():
     except Exception:                                  # noqa: BLE001
         return 8794
 
-
 def holocam_url():
     return "http://127.0.0.1:%d/stage.html" % _holocam_port()
-
 
 def _py_bin():
     """A python interpreter that actually RUNS - board.sh's hunt, in Python.
@@ -1280,7 +1236,6 @@ def _py_bin():
                 continue
     return None
 
-
 def holocam_alive(timeout=1.5):
     """True if the barehands server answers /orb on loopback."""
     try:
@@ -1289,7 +1244,6 @@ def holocam_alive(timeout=1.5):
             return r.status == 200
     except Exception:                                  # noqa: BLE001
         return False
-
 
 def holocam_start():
     if not os.path.isfile(os.path.join(BH_DIR, "server.py")):
@@ -1347,7 +1301,6 @@ def holocam_start():
     return {"answer": spoken, "nodes": [], "on_topic": False, "route": "arms",
             "arm": "holocam", "url": holocam_url()}
 
-
 def holocam_stop():
     proc = _holocam.get("proc")
     stopped_ours = False
@@ -1359,6 +1312,13 @@ def holocam_stop():
             proc.kill()
         stopped_ours = True
     _holocam["proc"] = None
+    logf = _holocam.get("log")
+    if logf:
+        try:
+            logf.close()                               # the child's stdout is done
+        except OSError:
+            pass
+        _holocam["log"] = None
     STATE["holocam_running"] = False
     _log("holocam.stop")
     if stopped_ours:
@@ -1373,9 +1333,7 @@ def holocam_stop():
     return {"answer": "The holocam was already dark, sir.",
             "nodes": [], "on_topic": False, "route": "arms", "arm": "holocam"}
 
-
 _RING_WORDS = ("idle", "listening", "thinking", "speaking")
-
 
 def holocam_ring(state):
     """Mirror Jarvis's state onto the ring: write one word to barehands/state/state.
@@ -1394,7 +1352,6 @@ def holocam_ring(state):
     except Exception:                                  # noqa: BLE001
         return False
 
-
 def holocam_board(cmd, timeout=4):
     """One command to the board's /cmd channel. The barehands server enforces
     its own action allowlist and the media airlock jail, so this passthrough
@@ -1408,7 +1365,6 @@ def holocam_board(cmd, timeout=4):
             return r.status
     except Exception as e:                             # noqa: BLE001
         return getattr(e, "code", 0)
-
 
 def holocam_last_answer():
     if not (_last_answer or "").strip():
@@ -1425,7 +1381,6 @@ def holocam_last_answer():
     return {"answer": (f"The board refused the card, sir (HTTP {code or 'no answer'}) - "
                        "is the holocam running? Say 'holocam' first and I shall try again."),
             "nodes": [], "on_topic": False, "route": "arms", "arm": "holocam"}
-
 
 def holocam_status():
     up = holocam_alive()
